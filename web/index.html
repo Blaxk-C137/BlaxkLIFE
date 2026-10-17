@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b1220" />
+<title>BLXVERSE — Living AI World</title>
+<meta name="description" content="BLXVERSE: a living neighborhood simulation where every resident has their own story. A fictional, AI-driven social life game." />
+<link rel="stylesheet" href="/css/style.css" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230b1220'/%3E%3Ccircle cx='32' cy='32' r='18' fill='none' stroke='%23ffb454' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='7' fill='%237fd1b9'/%3E%3C/svg%3E" />
+</head>
+<body>
+
+<!-- ============================ SETUP SCREEN ============================ -->
+<section id="setup" class="setup hidden">
+  <div class="setup-bg">
+    <div class="orb orb-a"></div><div class="orb orb-b"></div><div class="orb orb-c"></div>
+    <svg class="skyline" viewBox="0 0 1440 220" preserveAspectRatio="none" aria-hidden="true">
+      <g fill="#0d1828">
+        <rect x="0" y="110" width="120" height="110" rx="8"/><rect x="118" y="80" width="90" height="140" rx="8"/>
+        <rect x="204" y="130" width="140" height="90" rx="8"/><rect x="340" y="70" width="100" height="150" rx="8"/>
+        <rect x="436" y="120" width="160" height="100" rx="8"/><rect x="592" y="95" width="110" height="125" rx="8"/>
+        <rect x="698" y="140" width="180" height="80" rx="8"/><rect x="874" y="60" width="120" height="160" rx="8"/>
+        <rect x="990" y="120" width="140" height="100" rx="8"/><rect x="1126" y="90" width="110" height="130" rx="8"/>
+        <rect x="1232" y="120" width="208" height="100" rx="8"/>
+      </g>
+      <g fill="#ffb454" opacity=".55">
+        <rect x="140" y="100" width="8" height="10" rx="2"/><rect x="164" y="100" width="8" height="10" rx="2"/>
+        <rect x="360" y="92" width="8" height="10" rx="2"/><rect x="388" y="92" width="8" height="10" rx="2"/>
+        <rect x="616" y="118" width="8" height="10" rx="2"/><rect x="900" y="84" width="8" height="10" rx="2"/>
+        <rect x="1150" y="112" width="8" height="10" rx="2"/><rect x="1280" y="142" width="8" height="10" rx="2"/>
+      </g>
+    </svg>
+  </div>
+
+  <header class="setup-top">
+    <div class="brand">
+      <span class="brand-mark"><i></i></span>
+      <span class="brand-name">BLXVERSE</span>
+    </div>
+    <div class="top-actions">
+      <span class="pill ghost" id="setup-version">v0.1 vertical slice</span>
+      <button class="pill ghost" id="btn-about">About this world</button>
+    </div>
+  </header>
+
+  <div class="setup-grid">
+    <div class="setup-hero">
+      <span class="eyebrow">A LIVING AI WORLD · SINGLE PLAYER</span>
+      <h1>Move into a neighborhood<br/><em>that keeps living.</em></h1>
+      <p class="hero-copy">
+        60 residents with homes, jobs, moods, secrets and memories. Somebody's
+        planning a party. Somebody's spreading a rumor. Somebody's about to start
+        a cartoon dust cloud in the square. You're one of them now.
+      </p>
+      <ul class="pillar-list">
+        <li><span class="dot amber"></span><b>Living community</b> — routines and relationships that change when you're elsewhere.</li>
+        <li><span class="dot mint"></span><b>Real memory</b> — they remember what you said, and who told them what.</li>
+        <li><span class="dot coral"></span><b>Playful chaos</b> — non-graphic, exaggerated slapstick with social consequences.</li>
+        <li><span class="dot violet"></span><b>Voice calls</b> — speak naturally, interrupt naturally, on-device speech.</li>
+      </ul>
+      <div class="hero-foot">
+        <span class="micro-badge">🧠 AI characters are clearly fictional simulations</span>
+        <span class="micro-badge">🪙 BLX is a closed-loop game credit · no cash value</span>
+      </div>
+    </div>
+
+    <div class="creator card">
+      <div class="creator-head">
+        <div>
+          <h2>Create your resident</h2>
+          <p class="muted">This vertical slice is adult-only (22+). You can be anyone — the block is already curious.</p>
+        </div>
+        <span class="pill amber">Day 1 · Monday</span>
+      </div>
+
+      <div class="creator-body">
+        <div class="avatar-preview">
+          <canvas id="avatar-preview" width="300" height="380"></canvas>
+          <div class="preview-tag" id="preview-name-tag">New resident</div>
+          <div class="preview-glow"></div>
+        </div>
+
+        <div class="creator-fields">
+          <label class="field">
+            <span>Your name</span>
+            <input id="input-name" type="text" maxlength="24" placeholder="e.g. Ada" autocomplete="off" value="Ada" />
+          </label>
+
+          <div class="field">
+            <span>Gender</span>
+            <div class="segmented" id="gender-select" role="radiogroup" aria-label="Gender">
+              <button class="seg active" data-value="female" role="radio" aria-checked="true">Female</button>
+              <button class="seg" data-value="male" role="radio" aria-checked="false">Male</button>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Age <b id="age-value">26</b></span>
+            <input id="input-age" type="range" min="22" max="90" value="26" step="1" />
+          </label>
+
+          <div class="field">
+            <span>Skin tone</span>
+            <div class="swatches" id="skin-swatches"></div>
+          </div>
+
+          <div class="field">
+            <span>Hair</span>
+            <div class="swatches" id="hair-swatches"></div>
+          </div>
+
+          <div class="field two-col">
+            <label class="field mini">
+              <span>Hair style</span>
+              <select id="hair-style"></select>
+            </label>
+            <label class="field mini">
+              <span>Accessory</span>
+              <select id="accessory"></select>
+            </label>
+          </div>
+
+          <div class="field">
+            <span>Outfit color</span>
+            <div class="swatches" id="outfit-swatches"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="creator-foot">
+        <div class="home-note">🏡 You'll get a small place on Juniper Row, <b>320 BLX</b>, and a very loud neighborhood.</div>
+        <button class="btn primary big" id="btn-create">Move in to Bellwether <span class="arrow">→</span></button>
+        <button class="btn ghost big hidden" id="btn-continue">Continue as <b id="continue-name">—</b> →</button>
+        <p class="fineprint" id="creator-error" role="alert"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ GAME ============================ -->
+<main id="game" class="game hidden">
+  <header class="topbar">
+    <div class="brand small">
+      <span class="brand-mark"><i></i></span>
+      <span class="brand-name">BLXVERSE</span>
+    </div>
+
+    <div class="clock-cluster" id="clock-cluster">
+      <span class="clock-day" id="clock-day">Day 1 · Mon</span>
+      <span class="clock-time" id="clock-time">07:30</span>
+      <span class="weather" id="weather" title="Weather">☀️</span>
+    </div>
+
+    <div class="speed-control" role="group" aria-label="Time speed">
+      <button class="speed" data-speed="0" title="Pause">❚❚</button>
+      <button class="speed active" data-speed="1" title="Normal speed">1×</button>
+      <button class="speed" data-speed="2" title="Fast">2×</button>
+      <button class="speed" data-speed="4" title="Fastest">4×</button>
+    </div>
+
+    <div class="topbar-stats">
+      <span class="stat-pill wallet" id="stat-wallet" title="BLX balance"><span class="stat-ico">🪙</span><b>320</b></span>
+      <span class="stat-pill energy" id="stat-energy" title="Energy"><span class="stat-ico">⚡</span><b>100</b><span class="meter"><i></i></span></span>
+      <span class="stat-pill rep" id="stat-rep" title="Reputation"><span class="stat-ico">✦</span><b>50</b></span>
+    </div>
+
+    <div class="topbar-actions">
+      <button class="icon-btn" id="btn-phone" title="Phone (P)" aria-label="Phone">
+        <span class="ico">📱</span><span class="badge hidden" id="phone-badge">0</span>
+      </button>
+      <button class="icon-btn" id="btn-help" title="How to play" aria-label="Help">?</button>
+      <button class="icon-btn" id="btn-menu" title="Menu" aria-label="Menu">☰</button>
+    </div>
+  </header>
+
+  <div class="stage">
+    <canvas id="world" aria-label="Bellwether Block neighborhood map"></canvas>
+    <div class="hover-tip hidden" id="hover-tip"></div>
+
+    <div class="vignette"></div>
+
+    <div class="world-overlay">
+      <div class="world-left">
+        <button class="live-event hidden" id="live-event" title="Something is happening right now"></button>
+        <div class="location-chip card-soft" id="location-chip">
+          <span class="loc-ico">🏘️</span>
+          <div><b id="location-name">Bellwether Block</b><span id="location-sub">Juniper Row · public street</span></div>
+        </div>
+        <div class="quest-stack" id="quest-stack"></div>
+        <div class="date-stack" id="date-stack"></div>
+      </div>
+
+      <div class="world-right">
+        <div class="zoom-control card-soft">
+          <button id="zoom-in" title="Zoom in">+</button>
+          <button id="zoom-out" title="Zoom out">−</button>
+          <button id="zoom-home" title="Center on me">◎</button>
+        </div>
+        <div id="world-ticker" class="ticker"></div>
+      </div>
+
+      <!-- No floating "talk to nearest" bubble: it parked over the middle of
+           the map and swallowed click-to-walk. The nearby rail below performs
+           the same job, plus E talks to whoever is closest. -->
+      <div class="nearby-rail" id="nearby-rail"></div>
+
+      <div class="world-foot">
+        <span class="hint"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · click to walk · <kbd>E</kbd> talk to nearest · <kbd>P</kbd> phone</span>
+        <span class="live-note" id="live-note">● world live</span>
+        <span class="voice-live" id="voice-live" title="NPC is speaking">🔊 speaking</span>
+      </div>
+    </div>
+
+    <aside class="sidebar" id="sidebar">
+      <div class="side-tabs" role="tablist">
+        <button class="side-tab active" data-tab="people" role="tab">People</button>
+        <button class="side-tab" data-tab="story" role="tab">Story</button>
+        <button class="side-tab" data-tab="alerts" role="tab">Alerts <span class="badge hidden" id="alert-badge">0</span></button>
+      </div>
+      <div class="side-body" id="side-body"></div>
+    </aside>
+
+    <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+  </div>
+</main>
+
+<!-- overlays -->
+<div id="overlay-root"></div>
+<div id="phone-root" class="phone-root hidden"></div>
+<div id="call-root" class="call-root hidden"></div>
+<div id="ring-root" class="ring-root hidden"></div>
+
+<div id="boot" class="boot">
+  <div class="boot-mark"><i></i></div>
+  <p id="boot-status">Waking up the block…</p>
+  <div class="boot-track"><i id="boot-bar"></i></div>
+</div>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

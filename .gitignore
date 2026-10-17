@@ -1,0 +1,62 @@
+# Secrets and machine-specific configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets/
+credentials/
+
+# JavaScript / TypeScript
+node_modules/
+.next/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Local databases, recordings, transcripts, logs
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+recordings/
+transcripts/private/
+logs/
+*.log
+
+# Game save data (local, machine specific)
+data/saves/
+data/audit/
+data/*.sqlite3
+
+# Editor and operating system
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Local temporary artifacts
+.tmp/
+tmp/
+.cache/
+
+# Local JS syntax-check scratch
+.check/
+
+# Generated browser smoke screenshots
+screenshots/
