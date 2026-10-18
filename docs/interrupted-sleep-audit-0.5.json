@@ -1,0 +1,15 @@
+{
+  "result": "PASS",
+  "scenario": "staged reproduction of legacy interrupted 04:46 sleep and four tree-blocked commuters",
+  "residents": 72,
+  "initial_outdoors_eligible": 11,
+  "moved_over_8px": 11,
+  "eligible_moved": 11,
+  "non_spotlight_moved": 4,
+  "ending_indoors": 72,
+  "peak_walkers": 11,
+  "close_pair_frames_under_22px": 0,
+  "blocked_position_frames": 0,
+  "simulation_seconds_for_30_game_minutes": 0.469,
+  "note": "Isolated copy staged at the failing nighttime conditions; original live save untouched. Same movement/collision/stack thresholds as population_audit.py, not weakened."
+}

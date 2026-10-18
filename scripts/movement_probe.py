@@ -31,7 +31,9 @@ import urllib.request
 
 from playwright.sync_api import sync_playwright
 
-from blxverse.engine.sim import walkable
+# Direct `python scripts/movement_probe.py` needs the repository on sys.path.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from blxverse.engine.sim import walkable  # noqa: E402
 
 SHOTS = pathlib.Path("screenshots")
 

@@ -231,10 +231,9 @@ def test_date_offer_lands_on_calendar_and_pays_out(sim, run, near):
     from blxverse.content.locations import LOCATION_BY_ID
 
     zara = near("Zara")
-    for _ in range(12):
-        run("intent", npc_id=zara.id, intent="flirt")
-    for _ in range(6):
-        run("intent", npc_id=zara.id, intent="compliment")
+    # This test concerns calendar/payout at an established mutual attraction,
+    # not farming romance by repeating requests after a refusal.
+    sim.adjust_rel(zara.id, 'player', familiarity=35, trust=30, romance=45, affinity=35)
     result = run("intent", npc_id=zara.id, intent="ask_date")
     assert result["accepted"] is True, result.get("reason")
     offer = result["date_offer"]
@@ -260,7 +259,8 @@ def test_date_offer_lands_on_calendar_and_pays_out(sim, run, near):
 
 def test_stir_creates_a_challengeable_rumor(sim, run):
     """Whispering must actually enter the belief system, not just nudge tension."""
-    target = sim.npcs[3]
+    target = next(n for n in sim.npcs if not sim._indoors(n) and
+                  sum(o.location_id == n.location_id for o in sim.npcs) > 1)
     others = [n for n in sim.npcs if n.id != target.id and n.location_id == target.location_id]
     assert others, "expected a shared venue for this fixture"
     sim.player.x, sim.player.y = target.x + 10, target.y + 10

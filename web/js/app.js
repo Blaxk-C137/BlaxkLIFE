@@ -3,12 +3,13 @@
    Boots the API client, world canvas, voice engine and UI panels, then
    keeps a light poll loop so the HUD reflects the living simulation.
    ========================================================================= */
+import { BackgroundMusic } from './music.js';
 import { WorldView } from './world.js';
 import { Voice } from './voice.js';
 import { UI } from './ui.js';
 import { avatarUrl } from './art.js';
 
-const POLL_FAST = 1400;
+const POLL_FAST = 600;
 const POLL_SLOW = 4200;
 
 class ApiError extends Error {
@@ -26,6 +27,10 @@ const App = {
   lastActionAt: 0,
 
   async init() {
+    this.music = new BackgroundMusic();
+    const unlockMusic = () => this.music.start().catch(() => {});
+    document.addEventListener('pointerdown', unlockMusic, { once: true });
+    document.addEventListener('keydown', unlockMusic, { once: true });
     this.cache = new Map();
     this.lastRefresh = 0;
     this.refreshPending = null;
@@ -37,8 +42,8 @@ const App = {
       onLevel: (l) => this.ui.onVoiceLevel(l),
       onError: (msg) => this.ui.toast({ title: 'Voice', body: msg, kind: 'danger' }),
       onMetric: (kind, ms, extra) => this.reportMetric(kind, ms, extra),
-      onSpeakStart: () => this.setTalking(true),
-      onSpeakEnd: () => this.setTalking(false),
+      onSpeakStart: () => { this.setTalking(true); this.music.duck(true); },
+      onSpeakEnd: () => { this.setTalking(false); this.music.duck(!!this.ui.callSession); },
       onBargeIn: () => this.ui.onBargeIn(),
     });
 
@@ -101,7 +106,9 @@ const App = {
         this.setBoot('Ready.', 100);
       }
     } catch (e) {
-      this.setBoot(`Could not load the world: ${e.message}`, 100);
+      document.getElementById('boot').classList.remove('hidden');
+      document.getElementById('boot').classList.add('error');
+      this.setBoot(`Could not load the world: ${e.message}. Reload to retry.`, 100);
       console.error(e);
     }
   },
@@ -144,7 +151,7 @@ const App = {
     this.state = res;
     this.existingWorld = false;
     this.startGame(res, true);
-    this.ui.toast({ title: `Welcome to Bellwether, ${opts.name.split(' ')[0]}`, body: 'Your apartment is the mint door on Juniper Row. The block is already awake.', kind: 'good', ttl: 7000 });
+    this.ui.toast({ title: `Welcome to BlaxkVille, ${opts.name.split(' ')[0]}`, body: 'Your apartment is the mint door on Juniper Row. The block is already awake.', kind: 'good', ttl: 7000 });
   },
 
   async continueWorld() {
@@ -182,11 +189,14 @@ const App = {
   startLoop() {
     this.stopLoop();
     const tick = async () => {
-      if (document.hidden) return;
+      if (document.hidden || this.pollInFlight) return;
+      this.pollInFlight = true;
+      const epoch = this.mutationEpoch || 0;
       try {
         const st = await this.apiGet('/api/state');
-        this.applyState(st);
+        if (epoch === (this.mutationEpoch || 0)) this.applyState(st);
       } catch { /* transient */ }
+      finally { this.pollInFlight = false; }
     };
     this.pollTimer = setInterval(tick, POLL_FAST);
     this.slowTimer = setInterval(() => this.checkAtmosphere(), 30000);
@@ -229,21 +239,24 @@ const App = {
       if (n.kind === 'story') this.voice.tone('good');
     }
     if (next.clock.day !== prev.clock.day) {
-      this.ui.toast({ title: `Day ${next.clock.day}`, body: `${next.clock.weekday} on Bellwether. Rent is ${this.world?.config?.rent ?? 32} BLX, due 09:00.`, kind: 'info', ttl: 7000 });
+      this.ui.toast({ title: `Day ${next.clock.day}`, body: `${next.clock.weekday} on BlaxkVille. Rent is ${this.world?.config?.rent ?? 32} BLX, due 09:00.`, kind: 'info', ttl: 7000 });
     }
   },
 
   async doAction(type, payload = {}) {
+    if(this.inputLocked&&!['work','talk_end','dismiss_notifications'].includes(type))throw new ApiError('Finish your shift first.','busy',423);
     const now = performance.now();
     if (now - this.lastActionAt < 120) await new Promise(r => setTimeout(r, 120));
     this.lastActionAt = performance.now();
+    const epoch = this.mutationEpoch = (this.mutationEpoch || 0) + 1;
     const res = await this.api('/api/action', { method: 'POST', body: { type, ...payload } });
-    if (res.state) { this.state = res.state; this.view.setState(res.state); this.ui.renderHUD(res.state); }
+    if (res.state && epoch === this.mutationEpoch) this.applyState(res.state);
     if (res.cooldown_ms) await new Promise(r => setTimeout(r, 0));
     return res;
   },
 
   walkTo(x, y, onArrive = null, keyboard = false) {
+    if(this.inputLocked)return;
     const px = this.view.playerDisplay.x;
     const py = this.view.playerDisplay.y;
     if (!keyboard && Math.hypot(x - px, y - py) < 18) return;
@@ -251,17 +264,17 @@ const App = {
     // No optimistic hop: the sprite only ever walks the server's real A*
     // route, so it can neither cut through a building nor jump ahead of the
     // authoritative position and get snapped back a poll later.
+    const request = this.moveRequest = (this.moveRequest || 0) + 1;
     this.doAction('move', { x: Math.round(x), y: Math.round(y) }).then(res => {
+      if (request !== this.moveRequest) return;
       if (res?.route) this.view.setRoute(res.route, res.target);
       if (onArrive) setTimeout(onArrive, 350);
-    }).catch(() => { this.view.clearRoute(); });
+    }).catch(() => { if (request === this.moveRequest) this.view.clearRoute(); });
   },
 
   async checkAtmosphere() {
-    try {
-      const st = await this.apiGet('/api/state');
-      this.applyState(st);
-    } catch { /* noop */ }
+    // The fast loop already refreshes state; a second concurrent poll could
+    // return out of order on a slow mobile connection.
   },
 
   onHover(hit, pt) {
@@ -318,6 +331,14 @@ const App = {
   /* ------------------------------------------------------------------ chrome */
   wireChrome() {
     const $ = (s) => document.querySelector(s);
+    const musicButton = $('#btn-music');
+    const musicLabel = () => {
+      musicButton.setAttribute('aria-pressed', String(this.music.enabled));
+      musicButton.title = this.music.enabled ? 'Background music on — mute' : 'Background music off — enable';
+      musicButton.textContent = this.music.enabled ? '♫' : '♪';
+    };
+    musicLabel();
+    onClick('#btn-music', async () => { await this.music.toggle().catch(() => {}); musicLabel(); });
     onClick('#btn-phone', () => this.ui.openPhone('messages'));
     onClick('#btn-menu', () => this.openActionWheel());
     onClick('#btn-help', () => this.ui.openHelp());
@@ -342,13 +363,14 @@ const App = {
 
   wireKeys() {
     document.addEventListener('keydown', (e) => {
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target?.tagName)) return;
+      if (e.target?.closest('input,textarea,select,[contenteditable="true"]')) return;
       const k = e.key.toLowerCase();
       if (e.key === 'Escape') {
         if (this.ui.currentModal) this.ui.closeModal();
         else if (document.querySelector('#phone-root:not(.hidden)')) this.ui.closePhone();
         return;
       }
+      if (this.ui.currentModal || document.querySelector('#phone-root:not(.hidden)')) return;
       if (k === 'e') {
         const near = this.ui.nearestTalkable(this.state);
         if (near) this.ui.openTalk(near.id);
@@ -361,7 +383,7 @@ const App = {
       if (e.key === ' ') { e.preventDefault(); const s = this.state?.clock?.speed; this.setSpeed(s === 0 ? 1 : 0); }
       if (k === '+' || k === '=') this.view.setZoom(0.12);
       if (k === '-' || k === '_') this.view.setZoom(-0.12);
-      if (k === 'tab') { e.preventDefault(); this.openActionWheel(); }
+      // Tab remains native focus navigation; menu has a visible button.
     });
   },
 
@@ -378,6 +400,8 @@ const App = {
       ['📱', 'Phone', () => this.ui.openPhone('messages')],
       ['🌐', 'Feed', () => this.ui.openPhone('feed')],
       ['🗂️', 'Cases', () => this.ui.openPhone('cases')],
+      ['📖', 'Journal', () => this.ui.openJournal()],
+      ['📅', 'Calendar', () => this.ui.openPhone('calendar')],
       ['⚔️', 'Rivalries', () => this.ui.openRivals()],
       ['🕺', 'Stir the pot', () => this.doStir()],
       ['📊', 'Dashboard', () => this.ui.openStats()],
@@ -385,8 +409,10 @@ const App = {
       ['⚙️', 'Settings', () => this.ui.openSettings()],
     ];
     const body = `<div class="wheel-grid">${actions.map(([ico, label, fn], i) => `<button class="wheel-item" data-w="${i}"><span>${ico}</span><b>${label}</b></button>`).join('')}</div>
+      <div class="menu-speed-controls" role="group" aria-label="World pace"><b>World pace</b>${[[0,'Pause'],[1,'1×'],[2,'2×'],[4,'4×']].map(([speed,label])=>`<button class="speed ${st.clock.speed===speed?'active':''}" data-speed="${speed}" data-menu-speed="${speed}">${label}</button>`).join('')}</div>
       <div class="hint-note" style="margin-top:10px">${near ? `${near.first} is close enough to talk — press <kbd>E</kbd> or click them.` : 'Click a building to see its activities, or type <kbd>H</kbd> for the full guide.'}</div>`;
     const m = this.ui.modal({ title: 'What now?', subtitle: 'Quick actions for the block', icon: '✦', body, wide: true });
+    m.querySelectorAll('[data-menu-speed]').forEach(b => b.onclick = () => this.setSpeed(Number(b.dataset.menuSpeed)));
     m.querySelectorAll('[data-w]').forEach(b => b.onclick = () => {
       const fn = actions[Number(b.dataset.w)][2];
       this.ui.closeModal();
@@ -405,7 +431,7 @@ const App = {
   },
 
   async doStir() {
-    const near = this.state?.npcs?.filter(n => Math.hypot(n.x - this.state.player.x, n.y - this.state.player.y) < 200);
+    const near = this.state?.npcs?.filter(n => !n.indoors && Math.hypot(n.x - this.state.player.x, n.y - this.state.player.y) < 200);
     if (!near?.length) { this.ui.toast({ title: 'Nobody nearby', body: 'You need someone close enough to stir up trouble with.', kind: 'info' }); return; }
     const target = near[0];
     const yes = await this.ui.confirm({

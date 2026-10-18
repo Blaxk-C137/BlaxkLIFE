@@ -1,0 +1,20 @@
+{
+  "result": "PASS",
+  "cast_size_before": 72,
+  "cast_size_after": 72,
+  "identity_fields_preserved": [
+    "id",
+    "first",
+    "last",
+    "name",
+    "gender",
+    "pronouns"
+  ],
+  "gender_counts": {
+    "female": 42,
+    "male": 27,
+    "nonbinary": 3
+  },
+  "player_preserved": true,
+  "note": "Compared original pre-0.5 backup with the original live save. No cast replacement or population reset."
+}

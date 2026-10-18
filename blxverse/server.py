@@ -28,6 +28,8 @@ POST /api/speed                set 0 / 1 / 2 / 4
 
 from __future__ import annotations
 
+import base64
+import hmac
 import json
 import mimetypes
 import os
@@ -54,7 +56,8 @@ SAVE_PATH = os.path.join(SAVE_DIR, "world.json")
 LOCK = threading.RLock()
 SIM: Simulation | None = None
 TICK_INTERVAL = 0.25
-LAST_TICK = time.time()
+LAST_TICK = time.monotonic()
+STOP = threading.Event()
 
 RATE: dict[str, deque] = defaultdict(deque)
 VOICE_STAGES = {
@@ -95,19 +98,18 @@ def new_world(spec: dict) -> Simulation:
 
 def tick_loop() -> None:
     global LAST_TICK
-    while True:
-        time.sleep(TICK_INTERVAL)
-        now = time.time()
-        dt = min(now - LAST_TICK, 1.0)
+    while not STOP.wait(TICK_INTERVAL):
+        now = time.monotonic()
+        dt = min(max(now - LAST_TICK, 0.0), 1.0)
         LAST_TICK = now
-        sim = SIM
-        if sim is None:
-            continue
         try:
             with LOCK:
-                sim.tick(dt)
-                if sim._dirty and now - sim.last_save_real > 20:
-                    sim.save()
+                # Read the current world under the same lock as replacement.
+                if SIM is None:
+                    continue
+                SIM.tick(dt)
+                if SIM._dirty and time.time() - SIM.last_save_real > 20:
+                    SIM.save()
         except Exception:
             traceback.print_exc()
 
@@ -130,9 +132,58 @@ def _rate_limited(ip: str, limit: int = config.ACTION_RATE_LIMIT) -> bool:
     return len(q) > limit
 
 
+class BoundedHTTPServer(ThreadingHTTPServer):
+    """Cap concurrent sockets/threads on small CPU instances; no worker processes."""
+
+    # Drain in-flight handlers before the final save (idle sockets time out).
+    daemon_threads = False
+    request_queue_size = 32
+
+    def __init__(self, *args, **kwargs):
+        self.slots = threading.BoundedSemaphore(32)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        if not self.slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self.slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.slots.release()
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "BLXVERSE/0.1"
+    server_version = f"BLXVERSE/{config.VERSION}"
     protocol_version = "HTTP/1.1"
+
+    def setup(self) -> None:
+        # Idle keep-alives and incomplete bodies must not hold threads forever.
+        self.request.settimeout(15)
+        super().setup()
+
+    def _authorized(self) -> bool:
+        password = os.environ.get("BLXVERSE_ACCESS_PASSWORD", "")
+        if not password:
+            return True
+        expected = "Basic " + base64.b64encode(f"blxverse:{password}".encode()).decode()
+        supplied = self.headers.get("Authorization", "")
+        if hmac.compare_digest(supplied.encode(), expected.encode()):
+            return True
+        # Do not reuse a POST connection with an unread request body.
+        self.close_connection = True
+        self._send(401, b"Authentication required.", "text/plain; charset=utf-8", {
+            "WWW-Authenticate": 'Basic realm="BLXVERSE", charset="UTF-8"',
+            "Connection": "close",
+        })
+        return False
 
     # ---- logging -----------------------------------------------------
     def log_message(self, fmt: str, *args) -> None:  # quieter, no private content
@@ -141,6 +192,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- responses ---------------------------------------------------
     def _send(self, status: int, body: bytes, content_type: str, extra: dict | None = None) -> None:
+        if STOP.is_set():
+            self.close_connection = True
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
@@ -170,6 +223,7 @@ class Handler(BaseHTTPRequestHandler):
         if length <= 0:
             return {}
         if length > config.MAX_BODY_BYTES:
+            self.close_connection = True
             raise SimError("Request body too large.", "too_large", 413)
         raw = self.rfile.read(length)
         try:
@@ -185,13 +239,23 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
         query = parse_qs(parsed.query)
+        if path != "/api/health" and not self._authorized():
+            return
         if path.startswith("/api/"):
-            return self._api_get(path, query)
+            try:
+                return self._api_get(path, query)
+            except SimError as exc:
+                return self._error(exc.message, exc.code, exc.status)
+            except Exception:
+                traceback.print_exc()
+                return self._error("The world engine hit an unexpected snag.", "server_error", 500)
         return self._static(path)
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
+        if not self._authorized():
+            return
         if not path.startswith("/api/"):
             return self._error("Not found", "not_found", 404)
         ip = self.client_address[0]
@@ -219,8 +283,8 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", ""):
             path = "/index.html"
         safe = os.path.normpath(path).lstrip(os.sep)
-        full = os.path.join(WEB_DIR, safe)
-        if not os.path.abspath(full).startswith(os.path.abspath(WEB_DIR)):
+        full = os.path.realpath(os.path.join(WEB_DIR, safe))
+        if os.path.commonpath([os.path.realpath(WEB_DIR), full]) != os.path.realpath(WEB_DIR):
             return self._error("Forbidden", "forbidden", 403)
         if not os.path.isfile(full):
             return self._error("Not found", "not_found", 404)
@@ -308,10 +372,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self._error("No world yet.", "no_world", 409)
                 return self._json(SIM.events_payload())
         if path == "/api/save":
-            if not os.path.exists(SAVE_PATH):
-                return self._error("No save file yet.", "no_save", 404)
-            with open(SAVE_PATH, "rb") as fh:
-                body = fh.read()
+            with LOCK:
+                if SIM is None:
+                    return self._error("No save file yet.", "no_save", 404)
+                # A download is a current backup, not a stale autosave; hold the
+                # lock through reading so .bak rotation cannot race the export.
+                SIM.save(force=True)
+                with open(SAVE_PATH, "rb") as fh:
+                    body = fh.read()
             return self._send(200, body, "application/json",
                               {"Content-Disposition": 'attachment; filename="blxverse-save.json"'})
         return self._error("Unknown endpoint", "not_found", 404)
@@ -359,10 +427,39 @@ class Handler(BaseHTTPRequestHandler):
                     SIM.save()
                 if body.get("type") == "move":
                     return self._json({**result, "clock": SIM.clock_payload()})
+                source_sim = SIM
+                remote = result.pop('_remote_dialogue', None)
+                if body.get('type') in ('talk','intent','call_turn'):
+                    result['dialogue_source'] = 'offline'
+            # A slow AI response must never freeze NPC movement or state polling.
+            if remote:
+                reply = llm.generate_reply(**remote)
+                if reply:
+                    old_reply = result.get('reply', '')
+                    result['reply'] = reply
+                    result['dialogue_source'] = llm.status()['model']
+                    with LOCK:
+                        if SIM is source_sim:
+                            resident = SIM.npc(result.get('npc_id',''))
+                            if resident:
+                                for turn in resident.flags.get('conversation_history', []):
+                                    if turn['id'] == result.get('turn_id'):
+                                        turn['reply'] = reply
+                            SIM._dirty = True
+                            SIM.metrics['remote_llm_calls'] = SIM.metrics.get('remote_llm_calls', 0) + 1
+                            for memory in SIM.player.flags.get('journal', [])[-3:]:
+                                for length in (110, 90):
+                                    if old_reply[:length] in memory['summary']:
+                                        memory['summary'] = memory['summary'].replace(old_reply[:length], reply[:length])
+                                        break
+            with LOCK:
                 return self._json({**result, "state": SIM.state_payload()})
 
         if path == "/api/speed":
             with LOCK:
+                from blxverse.engine import civic
+                if civic.busy(SIM):
+                    return self._error("Your shift is still finishing.", "busy", 423)
                 speed = int(body.get("speed", 1))
                 if speed not in config.ALLOWED_SPEEDS:
                     return self._error("Speed must be 0, 1, 2 or 4.", "bad_speed", 422)
@@ -414,8 +511,9 @@ def _pct(values: list[float], p: float):
 def _empty_world_payload() -> dict:
     from blxverse.content.items import ITEMS
     from blxverse.content.locations import HOMES, LOCATIONS
+    from blxverse.content.scenery import SCENERY
     return {
-        "version": config.VERSION, "setup": True,
+        "version": config.VERSION, "setup": True, "city": "BlaxkVille", "scenery": SCENERY,
         "config": {"world_width": config.WORLD_WIDTH, "world_height": config.WORLD_HEIGHT,
                    "interact_radius": config.INTERACT_RADIUS, "talk_radius": config.TALK_RADIUS,
                    "player_speed": config.PLAYER_MAX_SPEED, "rent": config.DAILY_RENT,
@@ -430,27 +528,45 @@ def _empty_world_payload() -> dict:
 
 
 def main() -> None:
-    port = int(os.environ.get("BLXVERSE_PORT", "8000"))
+    global LAST_TICK
+    # Render injects PORT. An explicit --port (BLXVERSE_PORT) wins locally.
+    port = int(os.environ.get("BLXVERSE_PORT") or os.environ.get("PORT") or "8000")
     host = os.environ.get("BLXVERSE_HOST", "0.0.0.0")
+    # Fail startup early if the mounted save directory isn't writable.
+    os.makedirs(SAVE_DIR, exist_ok=True)
+    import tempfile
+    with tempfile.TemporaryFile(dir=SAVE_DIR):
+        pass
     load_or_none()
+    httpd = BoundedHTTPServer((host, port), Handler)
+    STOP.clear()
+    LAST_TICK = time.monotonic()
     t = threading.Thread(target=tick_loop, daemon=True, name="blxverse-tick")
     t.start()
 
     def shutdown(signum, frame):
-        with LOCK:
-            if SIM:
-                SIM.save(force=True)
-        print("\n[blxverse] saved and shutting down", file=sys.stderr)
-        sys.exit(0)
+        if STOP.is_set():
+            return
+        STOP.set()
+        # shutdown() must run outside the serve_forever thread to avoid deadlock.
+        threading.Thread(target=httpd.shutdown, daemon=True).start()
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
-
-    httpd = ThreadingHTTPServer((host, port), Handler)
-    httpd.daemon_threads = True
     print(f"[blxverse] BLXVERSE {config.VERSION} serving on http://{host}:{port}", file=sys.stderr)
     print(f"[blxverse] save: {SAVE_PATH}", file=sys.stderr)
-    httpd.serve_forever()
+    if os.environ.get("RENDER") == "true" and not os.environ.get("BLXVERSE_ACCESS_PASSWORD"):
+        print("[blxverse] WARNING: public shared world; all visitors control the same player.", file=sys.stderr)
+    try:
+        httpd.serve_forever(poll_interval=0.25)
+    finally:
+        STOP.set()
+        t.join(timeout=2)
+        httpd.server_close()
+        with LOCK:
+            if SIM:
+                SIM.save(force=True)
+        print("[blxverse] saved and shutting down", file=sys.stderr)
 
 
 if __name__ == "__main__":

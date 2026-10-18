@@ -1,0 +1,79 @@
+{
+  "result": "PASS",
+  "checks": [
+    "multiple ordinary walkers frame-sampled; continuous cruising playback, independent population audit",
+    "procedural music gesture unlock, mute and unmute",
+    "slow typing, native focus, one send, live incoming reply",
+    "failed message retains draft",
+    "Gist Hub draft, tab draft restoration, post, comment",
+    "clickable dismissal, fixed five-second expiry, no pinned story stack",
+    "6 viewport sizes, 7 phone tabs, profile/shop/settings/help/stats/journal, emulated keyboard"
+  ],
+  "viewports": [
+    [
+      320,
+      740
+    ],
+    [
+      360,
+      800
+    ],
+    [
+      390,
+      844
+    ],
+    [
+      768,
+      1024
+    ],
+    [
+      1024,
+      768
+    ],
+    [
+      1440,
+      900
+    ]
+  ],
+  "errors": [],
+  "motion": {
+    "resident": "npc_041",
+    "samples": 97,
+    "stationary_fraction": 0,
+    "median_px_second": 218.03365874052227,
+    "sampled_actors": 5,
+    "measurements": [
+      {
+        "resident": "npc_041",
+        "samples": 97,
+        "stationary_fraction": 0,
+        "median_px_second": 218.03365874052227
+      },
+      {
+        "resident": "npc_056",
+        "samples": 97,
+        "stationary_fraction": 0,
+        "median_px_second": 202.0679630864099
+      },
+      {
+        "resident": "npc_063",
+        "samples": 97,
+        "stationary_fraction": 0,
+        "median_px_second": 205.4904943639492
+      },
+      {
+        "resident": "npc_051",
+        "samples": 97,
+        "stationary_fraction": 0,
+        "median_px_second": 187.43861906707232
+      },
+      {
+        "resident": "npc_003",
+        "samples": 97,
+        "stationary_fraction": 0,
+        "median_px_second": 198.22175206648728
+      }
+    ]
+  },
+  "note": "Chromium viewport/software-keyboard emulation, not a physical-device accessibility audit."
+}

@@ -1,6 +1,6 @@
 /* =========================================================================
    Voice engine
-   - microphone consent + on-device speech recognition (no audio leaves the browser)
+   - microphone consent + browser speech recognition (game server receives text only)
    - RMS metering used as lightweight VAD and for barge-in detection
    - streaming speech synthesis with per-resident voice profiles
    - honest client-side latency instrumentation, reported to the server

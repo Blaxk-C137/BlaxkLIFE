@@ -59,6 +59,21 @@ export class UI {
     this.ringTimer = null;
     this.lastSetupPreview = null;
     this.settings = this.loadSettings();
+    this.phoneDrafts = new Map();
+    this.seenOverlays = new Set();
+    this.phoneRefreshBusy = false;
+    const fitViewport = () => {
+      const v = window.visualViewport;
+      document.documentElement.style.setProperty('--app-height', `${v?.height || window.innerHeight}px`);
+      document.documentElement.style.setProperty('--viewport-top', `${v?.offsetTop || 0}px`);
+    };
+    window.visualViewport?.addEventListener('resize', fitViewport);
+    window.visualViewport?.addEventListener('scroll', fitViewport);
+    window.addEventListener('resize', fitViewport);
+    fitViewport();
+    $('#btn-civic')?.addEventListener('click',()=>this.openCivicOverview());
+    window.addEventListener('pagehide',()=>{if(this.talkLease)navigator.sendBeacon('/api/action',new Blob([JSON.stringify({type:'talk_end',...this.talkLease})],{type:'application/json'}))});
+    document.addEventListener('keydown',e=>{if(this.app.inputLocked){e.preventDefault();e.stopImmediatePropagation()}},true);
   }
 
   loadSettings() {
@@ -207,6 +222,10 @@ export class UI {
      ===================================================================== */
   renderHUD(state) {
     if (!state || state.setup) return;
+    const busy=state.civic?.busy;
+    this.showBusy(busy,this.workPending&&!busy);
+    const safety=$('#btn-civic');
+    if(safety){safety.title=`Neighbourhood · health ${state.civic?.player_health??100} · heat ${state.civic?.heat??0}`}
     const c = state.clock;
     $('#clock-day').textContent = `Day ${c.day} · ${c.weekday}`;
     $('#clock-time').textContent = c.time;
@@ -226,7 +245,7 @@ export class UI {
     const alertCount = (state.notifications || []).length + (state.cases || []).length;
     alertBadge.textContent = String(alertCount);
     alertBadge.classList.toggle('hidden', alertCount === 0);
-    $('#live-note').textContent = `● ${state.tiers?.foreground ?? 0} nearby · ${state.npcs.length} residents live`;
+    $('#live-note').textContent = `● ${state.npcs.filter(n => !n.indoors && Math.hypot(n.x-state.player.x,n.y-state.player.y)<260).length} nearby · ${state.npcs.length} residents live`;
 
     this.renderSidebar(state);
     this.renderNearby(state);
@@ -240,7 +259,7 @@ export class UI {
     if (!state?.player) return null;
     let best = null, bestD = 9999;
     for (const n of state.npcs) {
-      if (n.status === 'sleeping') continue;
+      if (n.indoors || n.status === 'sleeping') continue;
       const d = Math.hypot(n.x - state.player.x, n.y - state.player.y);
       if (d < 150 && d < bestD) { best = n; bestD = d; }
     }
@@ -249,26 +268,10 @@ export class UI {
 
   renderLocation(state) {
     if (!state?.player || !this.app.world) return;
-    // A fixture running right now gets its own line under the location chip,
-    // so "the block is alive" is visible without opening a menu.
-    const liveEl = $('#live-event');
-    if (liveEl) {
-      const live = state.live_events || [];
-      if (live.length) {
-        const ev = live[0];
-        liveEl.classList.remove('hidden');
-        liveEl.innerHTML = `<span class="le-ico">${ev.icon}</span>
-          <span class="le-main"><b>${esc(ev.title)}</b><span>${esc(ev.where)} · on now</span></span>`;
-        liveEl.dataset.venue = ev.venue;
-        liveEl.onclick = () => {
-          const loc = this.loc(ev.venue);
-          if (!loc) return;
-          this.app.walkTo(loc.x + loc.w / 2, loc.y + loc.h + 52);
-        };
-      } else {
-        liveEl.classList.add('hidden');
-      }
-    }
+    $('#live-event')?.classList.add('hidden');
+    for (const ev of state.live_events || []) this.announceOnce(`fixture:${ev.id}:${ev.due}`, {
+      title: `${ev.icon} ${ev.title}`, body: `${ev.where} · on now. Find it in Calendar.`, kind: 'info',
+    });
     const locs = this.app.world.locations || [];
     let best = null, bestD = 1e9;
     for (const l of locs) {
@@ -282,9 +285,22 @@ export class UI {
       nameEl.textContent = best.name;
       subEl.textContent = `${best.icon} ${best.desc.split('.')[0].slice(0, 52)}…`;
     } else {
-      nameEl.textContent = 'Bellwether Block';
+      nameEl.textContent = 'BlaxkVille';
       subEl.textContent = `${state.clock.weather} · ${state.clock.is_weekend ? 'weekend' : 'weekday'}`;
     }
+    const key = best && bestD < 340 ? best.id : 'city';
+    const chip = $('#location-chip');
+    if (key !== this.locationKey) {
+      this.locationKey = key;
+      clearTimeout(this.locationTimer);
+      chip.classList.remove('hidden');
+      this.locationTimer = setTimeout(() => chip.classList.add('hidden'), 5000);
+    }
+    $('#dismiss-location').onclick = e => {
+      e.stopPropagation();
+      clearTimeout(this.locationTimer);
+      chip.classList.add('hidden');
+    };
   }
 
   renderNearby(state) {
@@ -292,7 +308,7 @@ export class UI {
     if (!rail || !state?.player) return;
     const near = state.npcs
       .map(n => ({ ...n, d: Math.hypot(n.x - state.player.x, n.y - state.player.y) }))
-      .filter(n => n.d < 520)
+      .filter(n => !n.indoors && n.status !== 'sleeping' && n.d < 520)
       .sort((a, b) => a.d - b.d)
       .slice(0, 8);
     rail.innerHTML = near.map(n => `
@@ -303,56 +319,34 @@ export class UI {
     $$('.nearby-person', rail).forEach(el => el.onclick = () => this.openProfile(el.dataset.npc));
   }
 
+  announceOnce(key, notification) {
+    if (this.seenOverlays.has(key)) return;
+    this.seenOverlays.add(key);
+    // Bounded lifetime cache; ids/stages, not every game-clock update.
+    if (this.seenOverlays.size > 500) this.seenOverlays.delete(this.seenOverlays.values().next().value);
+    this.toast(notification);
+  }
+
   renderQuests(state) {
-    const stack = $('#quest-stack');
-    if (!stack) return;
-    const cards = [];
-    const arcs = (state.arcs || []).filter(a => a.status === 'active');
-    const chain = arcs.find(a => a.kind === 'chain');
-    const caseOpen = (state.cases || [])[0];
-    const date = (state.date_offers || [])[0];
-    if (date) {
-      const npc = this.npc(date.npc_id);
-      const venue = this.locationName(date.venue);
-      cards.push(`<div class="quest-card date" data-open="date" data-id="${esc(date.id)}">
-        <div class="qc-kicker">Date · ${esc(this.fmtClockShort(date.due))}</div>
-        <div class="qc-title">${esc(npc?.first || 'Someone')} · ${esc(venue)}</div>
-        <div class="qc-sub">Meet them there. If you're late, they'll notice.</div></div>`);
+    $('#quest-stack')?.replaceChildren();
+    for (const arc of (state.arcs || []).filter(a => a.status === 'active')) {
+      this.announceOnce(`story:${arc.id}:${arc.stage_title || arc.stage}`, {
+        title: arc.stage_title || arc.title, body: arc.summary || 'Open Journal for the story so far.', kind: 'story',
+      });
     }
-    if (caseOpen) {
-      cards.push(`<div class="quest-card case" data-open="case" data-id="${esc(caseOpen.id)}">
-        <div class="qc-kicker">Open case · ${caseOpen.evidence?.length || 0} clue${(caseOpen.evidence?.length || 0) === 1 ? '' : 's'} found</div>
-        <div class="qc-title">${esc(caseOpen.title)}</div>
-        <div class="qc-sub">${esc(caseOpen.description.split('.')[0])}.</div></div>`);
-    }
-    if (chain || arcs[0]) {
-      const arc = chain || arcs[0];
-      cards.push(`<div class="quest-card" data-open="story">
-        <div class="qc-kicker">Storyline · ${esc(arc.stage_title || 'in progress')}</div>
-        <div class="qc-title">${esc(arc.title)}</div>
-        <div class="qc-sub">${esc((arc.summary || '').slice(0, 92))}${(arc.summary || '').length > 92 ? '…' : ''}</div></div>`);
-    }
-    stack.innerHTML = cards.slice(0, 3).join('');
-    $$('[data-open]', stack).forEach(el => {
-      el.onclick = () => {
-        if (el.dataset.open === 'story') { this.switchSideTab('story'); $('#sidebar').classList.remove('collapsed'); }
-        if (el.dataset.open === 'case') this.openCaseFile(el.dataset.id);
-        if (el.dataset.open === 'date') this.openDateOffer(el.dataset.id);
-      };
+    for (const c of state.cases || []) this.announceOnce(`case:${c.id}:${c.evidence?.length}`, {
+      title: c.title, body: `${c.evidence?.length || 0} clues found. Details stay in Journal → Cases.`, kind: 'story',
+    });
+    for (const d of state.date_offers || []) this.announceOnce(`date:${d.id}`, {
+      title: 'Date planned', body: `${this.npc(d.npc_id)?.first || 'Someone'} · ${this.locationName(d.venue)} · ${fmtClock(d.due)}`, kind: 'good',
     });
   }
 
   renderTicker(state) {
-    const ticker = $('#world-ticker');
-    if (!ticker) return;
-    const items = [];
-    if (state.last_event && state.last_event.kind === 'slapstick') {
-      items.push(`<div class="ticker-item">🌀 <b>${esc(state.last_event.summary)}</b></div>`);
-    }
-    (state.notices || []).slice(-2).reverse().forEach(n => {
-      items.push(`<div class="ticker-item">${n.kind === 'alert' ? '🚨' : n.kind === 'news' ? '📰' : '📌'} ${esc(n.title)}</div>`);
+    $('#world-ticker')?.replaceChildren();
+    for (const n of (state.notices || []).slice(-2)) this.announceOnce(`notice:${n.id}`, {
+      title: n.title, body: n.body || '', kind: n.kind === 'alert' ? 'danger' : 'info',
     });
-    ticker.innerHTML = items.slice(0, 3).join('');
   }
 
   renderSidebar(state) {
@@ -369,7 +363,7 @@ export class UI {
         ${near.map(n => `
           <button class="person-row" data-npc="${n.id}">
             <span class="person-avatar"><img src="${avatarUrl(n.look, 76, 'head', n.mood)}" alt="" style="width:100%;height:100%;object-fit:cover" /></span>
-            <span class="person-main"><b>${esc(n.first)} ${esc(n.last)}</b><span>${ARCH_ICONS[n.archetype] || ''} ${esc(n.occupation)} · ${esc(STATUS_LABEL[n.status] || n.status)}</span></span>
+            <span class="person-main"><b>${esc(n.first)} ${esc(n.last)}</b><span>${ARCH_ICONS[n.archetype] || ''} ${esc(n.vibe?.label || n.occupation)} · ${esc(n.indoors ? 'indoors at home' : STATUS_LABEL[n.status] || n.status)}</span></span>
             <span class="person-rel">${esc(n.rel?.label || '')}<small>${Math.round(n.d)}px</small></span>
           </button>`).join('')}
         <div class="empty-note">Click a resident to see their profile, memories and beliefs — or walk closer and press <kbd>E</kbd> to talk.</div>`;
@@ -455,7 +449,21 @@ export class UI {
     return this.currentModal;
   }
 
+  releaseTalk() {
+    clearInterval(this.talkHeartbeat);
+    const lease=this.talkLease;this.talkLease=null;
+    if(lease)this.app.api('/api/action',{method:'POST',body:{type:'talk_end',...lease}}).catch(()=>{});
+  }
+
+  finishTalkUI(message) {
+    this.releaseTalk();
+    if(message&&$('#talk-scroll'))this.addTalkBubble('npc',message);
+    $$('#talk-input,#talk-send,#talk-mic,#talk-chips button').forEach(el=>el.disabled=true);
+    if(this.voiceCtx?.mode==='talk')this.voiceCtx=null;
+  }
+
   closeModal() {
+    this.releaseTalk();
     const root = $('#overlay-root');
     if (!root) return;
     root.innerHTML = '';
@@ -511,7 +519,7 @@ export class UI {
   /* =====================================================================
      Toasts
      ===================================================================== */
-  toast({ title, body = '', kind = 'info', ttl = 5200, icon = '' }) {
+  toast({ title, body = '', kind = 'info', ttl = 5000, icon = '' }) {
     const stack = $('#toast-stack');
     if (!stack) return;
     const icons = { good: '✅', story: '📖', danger: '⚠️', info: '🔔', message: '💬', call: '📞', money: '🪙' };
@@ -523,13 +531,14 @@ export class UI {
     el.querySelector('.t-close').onclick = () => this.removeToast(el);
     stack.appendChild(el);
     while (stack.children.length > 3) stack.removeChild(stack.firstChild);
-    setTimeout(() => this.removeToast(el), ttl);
+    // Every transient notice gets the same five-second lifetime.
+    el._dismissTimer = setTimeout(() => this.removeToast(el), 5000);
   }
 
   removeToast(el) {
     if (!el || !el.parentNode) return;
-    el.classList.add('leaving');
-    setTimeout(() => el.remove(), 320);
+    clearTimeout(el._dismissTimer);
+    el.remove();
   }
 
   /* =====================================================================
@@ -538,7 +547,9 @@ export class UI {
   npc(id) {
     if (!id) return null;
     const state = this.app.state;
-    return (this.app.world?.npcs || []).find(n => n.id === id) || state?.npcs?.find(n => n.id === id) || null;
+    const base=(this.app.world?.npcs || []).find(n=>n.id===id), live=state?.npcs?.find(n=>n.id===id);
+    if(state?.npcs&&!live)return null;
+    return base||live?{...base,...live}:null;
   }
   loc(id) { return (this.app.world?.locations || []).find(l => l.id === id) || null; }
   locationName(id) { return this.loc(id)?.name || (id === 'home' ? 'home' : 'the block'); }
@@ -633,13 +644,13 @@ export class UI {
           <div class="profile-name">${esc(p.name || base.name)}</div>
           <div class="profile-sub">${esc(p.pronouns || '')} · ${p.age} · ${esc(p.occupation || '')} · ${esc(p.household_role || '')}</div>
           <div class="chip-row">
-            <span class="chip amber">${ARCH_ICONS[p.archetype] || '✨'} ${esc(p.archetype_label || p.archetype)}</span>
+            <span class="chip amber">${ARCH_ICONS[p.archetype] || '✨'} ${esc(p.vibe?.label || p.archetype_label || p.archetype)}</span>
             <span class="chip mint">${esc(rel.label || 'acquaintance')}</span>
             <span class="chip">${esc(p.age_bracket || '')}</span>
             ${p.group_hint ? `<span class="chip violet">crew: ${esc(p.group_hint)}</span>` : ''}
             ${p.spotlight ? '<span class="chip mint">neighborhood regular</span>' : ''}
           </div>
-          <p class="profile-bio">${esc(p.archetype_blurb || '')}. Currently: ${esc(p.activity || 'out and about')}. ${esc(p.quirk ? `Fun fact: ${p.quirk}.` : '')}</p>
+          <p class="profile-bio">${esc(p.vibe?.description || p.archetype_blurb || '')}. Currently: ${esc(p.activity || 'out and about')}. ${esc(p.quirk ? `Fun fact: ${p.quirk}.` : '')}</p>
           <div class="rel-grid">
             ${meter('Familiarity', rel.familiarity || 0, 100, 'rm-fam')}
             ${meter('Trust', rel.trust || 0, 100, 'rm-trust')}
@@ -653,7 +664,7 @@ export class UI {
       <div class="profile-section">
         <h4>Actions</h4>
         <div class="action-grid">
-          <button class="action-tile" data-act="talk"><span class="at-ico">💬</span><b>Talk</b><span>${near ? 'right here' : 'walk closer first'}</span></button>
+          <button class="action-tile" data-act="talk"><span class="at-ico">💬</span><b>Talk</b><span>${p.indoors ? 'indoors · text instead' : near ? 'right here' : 'walk closer first'}</span></button>
           <button class="action-tile" data-act="message"><span class="at-ico">✉️</span><b>Message</b><span>through the phone</span></button>
           <button class="action-tile" data-act="call"><span class="at-ico">📞</span><b>Call</b><span>${(rel.familiarity || 0) >= 8 ? 'voice + avatar' : 'know them better first'}</span></button>
           <button class="action-tile" data-act="gift"><span class="at-ico">🎁</span><b>Give a gift</b><span>from your bag</span></button>
@@ -698,7 +709,7 @@ export class UI {
     `;
     const foot = `<span class="pill ghost left">${esc(p.spotlight ? 'Local regular' : 'Resident')} · ${esc(p.location || 'around')}</span>
       <button class="btn ghost" data-close="1">Close</button>
-      <button class="btn primary" data-act="talk">Talk to ${esc((p.first || 'them'))}</button>`;
+      <button class="btn danger" data-act="confront">Confront</button><button class="btn primary" data-act="talk">Talk to ${esc((p.first || 'them'))}</button>`;
     const modal = this.modal({ title: `${p.first}'s profile`, subtitle: `${p.occupation} · ${p.age} · ${MOOD_ICONS[mood] || ''} ${mood}`, icon: '👤', body, foot, wide: true, tall: true });
     $$('[data-close]', modal).forEach(el => el.addEventListener('click', () => this.closeModal()));
     $$('[data-act]', modal).forEach(el => el.addEventListener('click', () => this.runProfileAction(el.dataset.act, p, base)));
@@ -712,7 +723,15 @@ export class UI {
     }));
   }
 
-  runProfileAction(act, p, base) {
+  async runProfileAction(act, p, base) {
+    if(act==='confront'){
+      if(!await this.confirm({title:'Escalate this dispute?',body:'A physical fight can wound or permanently end a resident’s life. You will lose reputation and attract police attention.',confirmLabel:'Confront',danger:true}))return;
+      if(await this.doCivic('confront',{npc_id:p.id}))this.closeModal();return;
+    }
+    if (!['message', 'call'].includes(act) && (p.indoors || base.indoors)) {
+      this.toast({ title: 'At home', body: `${p.first} is indoors. Try a text or a call instead.`, kind: 'info' });
+      return;
+    }
     if (act === 'talk') {
       if (this.distToNpc(base) > 150) { this.toast({ title: 'Too far away', body: `Walk closer to ${p.first} first.`, kind: 'info' }); return; }
       this.openTalk(p.id);
@@ -750,7 +769,7 @@ export class UI {
         <div class="profile-name">${esc(p.name)}</div>
         <div class="profile-sub">${esc(p.gender)} · ${p.age || ''} · ${esc(p.occupation || 'newcomer')} · Juniper Row</div>
         <div class="chip-row"><span class="chip amber">🪙 ${fmtNum(p.wallet)} BLX</span><span class="chip mint">⚡ ${Math.round(p.energy)} energy</span><span class="chip violet">✦ ${Math.round(p.reputation)} reputation</span></div>
-        <p class="profile-bio">You're one resident among many in Bellwether. The block has its own rhythm; you're part of it now.</p>
+        <p class="profile-bio">You're one resident among many in BlaxkVille. The block has its own rhythm; you're part of it now.</p>
         <div class="profile-section" style="margin-top:6px"><h4>Your bag</h4><div class="chip-row">${invHtml}</div></div>
       </div></div>
       <div class="profile-section"><h4>Quick actions</h4>
@@ -772,43 +791,70 @@ export class UI {
   /* =====================================================================
      TALK
      ===================================================================== */
+  watchConversationLog(log) {
+    if(!log || !window.ResizeObserver)return;
+    this.chatObservers ||= new Map();
+    for(const [el,observer] of this.chatObservers) if(!el.isConnected){observer.disconnect();this.chatObservers.delete(el);}
+    if(this.chatObservers.has(log))return;
+    let previousHeight=log.clientHeight;
+    const observer=new ResizeObserver(()=>{
+      const following=log.scrollHeight-log.scrollTop-previousHeight<70;
+      previousHeight=log.clientHeight;
+      if(following)log.scrollTop=log.scrollHeight;
+    });
+    observer.observe(log);this.chatObservers.set(log,observer);
+  }
+
   async openTalk(npcId, opts = {}) {
     const npc = this.npc(npcId);
     if (!npc) return;
+    let lease;
+    try {lease=await this.app.doAction('talk_begin',{npc_id:npcId})}
+    catch(e){this.toast({title:'Cannot talk now',body:e.message,kind:'info'});return}
     this.voiceCtx = { mode: 'talk', npcId };
     const firstTime = (npc.rel?.familiarity || 0) < 3;
-    const opener = npc.status === 'sleeping'
+    let opener = npc.status === 'sleeping'
       ? `${npc.first} is asleep. You decide not to wake them.`
       : this.talkOpener(npc, firstTime);
+    if((lease.history||[]).some(t=>t.user))opener="Good to see you. We can pick up our gist here.";
+    const previous = (lease.history || []).map(t=>`${t.user ? `<div class="chat-row player"><div class="bubble">${esc(t.user)}<span class="bubble-meta">You · earlier ${esc(t.medium)}</span></div></div>` : ''}${t.reply ? `<div class="chat-row npc"><div class="bubble">${esc(t.reply)}<span class="bubble-meta">${esc(npc.first)} · earlier ${esc(t.medium)}</span></div></div>` : ''}`).join('');
     const body = `
       <div class="chat-shell">
-        <div class="chat-scroll" id="talk-scroll">
+        <div class="chat-scroll" id="talk-scroll" role="log" aria-label="Conversation">
+          ${previous}
           <div class="chat-row npc">
             <span class="chat-avatar"><img src="${avatarUrl(npc.look, 64, 'head', npc.mood)}" style="width:100%;height:100%;object-fit:cover" alt=""/></span>
             <div class="bubble">${esc(opener)}<span class="bubble-meta">${esc(npc.name)} · ${MOOD_ICONS[npc.mood] || '🙂'} ${esc(npc.mood)}</span></div>
           </div>
         </div>
-        <div class="quick-chips" id="talk-chips">
-          ${[['greet', '👋 Greet'], ['joke', '😄 Joke'], ['compliment', '✨ Compliment'], ['flirt', '💛 Flirt'], ['gossip', '👀 Gossip'], ['deep', '🫶 Deep talk'], ['apologize', '🕊️ Apologize'], ['ask_date', '🌙 Ask out'], ['invite', '🎟️ Invite'], ['goodbye', '👋 Bye']]
+        <details class="talk-options"><summary>Quick replies</summary><div class="quick-chips" id="talk-chips">
+          ${[['greet', '👋 Greet'], ['joke', '😄 Joke'], ['compliment', '✨ Compliment'], ['flirt', '💛 Flirt'], ['gossip', '👀 Gossip'], ['deep', '🫶 Deep talk'], ['apology', '🕊️ Apologize'], ['ask_date', '🌙 Ask out'], ['invite', '🎟️ Invite'], ['goodbye', '👋 Bye']]
             .map(([k, l]) => `<button class="qchip" data-intent="${k}">${l}</button>`).join('')}
-        </div>
+        </div></details>
         <div class="chat-input-row">
-          <button class="mic-btn" id="talk-mic" title="Speak (on-device speech)">🎙️</button>
+          <button class="mic-btn" id="talk-mic" title="Speak (browser speech)">🎙️</button>
           <textarea class="chat-input" id="talk-input" rows="1" maxlength="280" placeholder="Say something to ${esc(npc.first)}…"></textarea>
           <button class="chat-send" id="talk-send" title="Send">↑</button>
         </div>
         <div class="voice-status" id="talk-voice-status"></div>
       </div>`;
-    const foot = `<span class="pill ghost left">${esc(npc.rel?.label || 'acquaintance')} · familiarity ${Math.round(npc.rel?.familiarity || 0)}%</span>
-      <button class="btn ghost" data-t="profile">Profile</button>
+    const foot = `<button class="btn ghost" data-t="profile">Profile</button>
       <button class="btn ghost" data-t="phone">Text instead</button>`;
     const asleep = npc.status === 'sleeping';
     const modal = this.modal({
       title: `${npc.first}`, subtitle: `${npc.occupation} · ${STATUS_LABEL[npc.status] || ''} · ${MOOD_ICONS[npc.mood] || ''} ${npc.mood}`,
-      icon: '💬', body, foot, wide: true,
+      icon: '💬', body, foot, wide: true, className: 'talk-modal',
     });
+    this.talkLease={session_id:lease.session_id,npc_id:npcId};
+    this.talkHeartbeat=setInterval(async()=>{
+      const current=this.talkLease;if(!current)return;
+      try{await this.app.api('/api/action',{method:'POST',body:{type:'talk_keepalive',...current}})}
+      catch(e){if(this.talkLease===current)this.finishTalkUI(e.code==='session_ended'?'They have left the conversation.':e.message)}
+    },5000);
     this.bindTalk(modal, npc, { asleep });
-    if (!asleep) $('#talk-input')?.focus();
+    this.watchConversationLog($('#talk-scroll'));
+    if (!asleep) $('#talk-input')?.focus({preventScroll:true});
+    requestAnimationFrame(()=>{const log=$('#talk-scroll');if(log)log.scrollTop=log.scrollHeight});
     $$('[data-t]', modal).forEach(b => b.addEventListener('click', () => {
       if (b.dataset.t === 'profile') this.openProfile(npc.id);
       if (b.dataset.t === 'phone') { this.closeModal(); this.openPhone('messages', { npcId: npc.id }); }
@@ -835,7 +881,7 @@ export class UI {
     const input = $('#talk-input', modal);
     const send = () => {
       const text = input.value.trim();
-      if (!text) return;
+      if (!text || $('#talk-scroll')?.dataset.sending === '1') return;
       input.value = '';
       this.sendTalkText(npc, text);
     };
@@ -861,7 +907,7 @@ export class UI {
   }
 
   async sendQuickIntent(npc, intent) {
-    if (!this.currentModal) return;
+    if (!this.currentModal || $('#talk-scroll')?.dataset.sending === '1') return;
     const label = { greet: 'Say hi', joke: 'Tell a joke', compliment: 'Give a compliment', flirt: 'Flirt', ask_date: 'Ask them out', apologize: 'Apologize', gossip: 'Ask for the gossip', invite: 'Invite them out', deep: 'Have a real conversation', goodbye: 'Say goodbye' }[intent] || intent;
     this.addTalkBubble('player', `(${label})`);
     await this.sendTalkTurn(npc, null, intent);
@@ -874,7 +920,9 @@ export class UI {
 
   async sendTalkTurn(npc, text, intent) {
     const scroll = $('#talk-scroll');
-    if (!scroll) return;
+    if (!scroll || scroll.dataset.sending === '1') return;
+    scroll.dataset.sending = '1';
+    $$('#talk-send,#talk-chips button').forEach(el=>el.disabled=true);
     const typing = document.createElement('div');
     typing.className = 'chat-row npc';
     typing.innerHTML = `<span class="chat-avatar"><img src="${avatarUrl(npc.look, 64, 'head', npc.mood)}" style="width:100%;height:100%;object-fit:cover" alt=""/></span><div class="bubble typing"><i></i><i></i><i></i></div>`;
@@ -885,20 +933,32 @@ export class UI {
         ? await this.app.doAction('talk', { npc_id: npc.id, text })
         : await this.app.doAction('intent', { npc_id: npc.id, intent });
       typing.remove();
+      if (!scroll.isConnected || this.voiceCtx?.npcId !== npc.id) return;
+      if(res.state?.civic&&res.state.civic.conversation?.npc_id!==npc.id&&!res.conversation_ended){this.finishTalkUI('They have left the conversation.');return}
       this.addTalkBubble('npc', res.reply, res);
       if (res.effects_display?.length) this.addEffectChips(res.effects_display);
+      if (res.coaching && scroll.isConnected) {
+        $('#talk-voice-status').textContent = res.coaching;
+      }
+      if (res.conversation_ended) this.finishTalkUI();
       if (res.date_offer) this.addDateCard(res.date_offer);
       if (intent === 'ask_date' && res.accepted === false) this.toast({ title: 'Not this time', body: res.reason || 'They said no.', kind: 'info' });
       if (res.accepted === true && intent === 'ask_date') this.toast({ title: 'Date confirmed 🌙', body: `${npc.first} said yes — ${this.locationName(res.date_offer.venue)}.`, kind: 'good' });
       if (this.settings.speakReplies) this.speakLine(res.reply, npc);
-      this.app.refreshStateSoon();
+      // doAction already applied the authoritative state; no extra refresh needed.
     } catch (e) {
       typing.remove();
       if (e.code === 'asleep') {
         this.addTalkBubble('npc', e.message, null);
         return;
       }
+      if (text && scroll.isConnected && !$('#talk-input').value) $('#talk-input').value=text;
       this.toast({ title: 'That didn\'t land', body: e.message || 'Something went wrong.', kind: 'danger' });
+    } finally {
+      scroll.dataset.sending = '';
+      scroll.scrollTop=scroll.scrollHeight;
+      requestAnimationFrame(()=>{if(scroll.isConnected)scroll.scrollTop=scroll.scrollHeight});
+      if(scroll.isConnected && this.talkLease) $$('#talk-send,#talk-chips button').forEach(el=>el.disabled=false);
     }
   }
 
@@ -911,21 +971,16 @@ export class UI {
     const avatar = who === 'npc'
       ? `<span class="chat-avatar"><img src="${avatarUrl(npc?.look, 64, 'head', npc?.mood)}" style="width:100%;height:100%;object-fit:cover" alt=""/></span>`
       : '';
-    const metaLine = who === 'npc' && meta?.mood ? ` · ${MOOD_ICONS[meta.mood] || ''} ${meta.mood}` : '';
+    const moodLine=who==='npc'&&meta?.mood?` · ${MOOD_ICONS[meta.mood]||''} ${meta.mood}`:'';
+    const metaLine=moodLine+(who==='npc'&&meta?.dialogue_source?` · ${meta.dialogue_source==='offline'?'local reply':meta.dialogue_source}`:'');
     row.innerHTML = `${avatar}<div class="bubble">${esc(text)}<span class="bubble-meta">${who === 'npc' ? esc(npc?.first || '') : 'You'}${esc(metaLine)}</span></div>`;
     scroll.appendChild(row);
     scroll.scrollTop = scroll.scrollHeight;
   }
 
   addEffectChips(effects) {
-    const scroll = $('#talk-scroll');
-    if (!scroll) return;
-    const el = document.createElement('div');
-    el.className = 'chat-effects';
-    el.style.alignSelf = 'center';
-    el.innerHTML = effects.map(e => `<span class="effect-chip ${e.includes('-') ? 'neg' : ''}">${esc(e)}</span>`).join('');
-    scroll.appendChild(el);
-    scroll.scrollTop = scroll.scrollHeight;
+    const status = $('#talk-voice-status');
+    if(status) {status.textContent=effects.join(' · ');status.title=status.textContent;}
   }
 
   addDateCard(offer) {
@@ -1100,7 +1155,7 @@ export class UI {
           </div>`;
         }).join('')}
       </div>` : ''}`;
-    const m = this.modal({ title: 'Bellwether shop', subtitle: 'Gifts, snacks and small kindnesses', icon: '🛍️', body, wide: true });
+    const m = this.modal({ title: 'BlaxkVille shop', subtitle: 'Gifts, snacks and small kindnesses', icon: '🛍️', body, wide: true });
     $$('[data-buy]', m).forEach(b => b.onclick = async () => {
       try {
         const res = await this.app.doAction('buy', { item_id: b.dataset.buy, remote: !nearShop });
@@ -1120,9 +1175,44 @@ export class UI {
   /* =====================================================================
      VENUE
      ===================================================================== */
+  openCivicOverview() {
+    const c=this.app.state?.civic||{};
+    const active=(c.incidents||[]).filter(i=>!['resolved','retreated'].includes(i.phase));
+    const body=`<div class="civic-summary"><span>♥ Health <b>${c.player_health??100}</b></span><span>Police attention <b>${c.heat??0}/100</b></span></div>
+      <p class="civic-copy">A living town, with real consequences. Fights and raids are non-graphic. Deaths are permanent, including named neighbours.</p>
+      <div class="civic-sites">${['hospital','police','barracks','graveyard','black_market'].map(id=>{const l=this.loc(id);return `<button class="civic-site" data-csite="${id}"><span>${l.icon}</span><b>${esc(l.name)}</b><small>${id==='hospital'?`${(c.patients||[]).length} recovering`:id==='graveyard'?`${(c.memorials||[]).length} remembered`:id==='black_market'?'Fictional risky businesses':'Safety & response'}</small></button>`}).join('')}</div>
+      <h3>Neighbourhood incidents</h3>${active.length?active.map(i=>`<div class="civic-incident"><b>${esc(i.kind==='raid'?'Armed bandit squad':i.kind)}</b><span>${esc(this.locationName(i.location))} · ${esc(i.phase)}</span><button class="btn tiny ghost" data-incident-go="${esc(i.location)}">Go nearby</button></div>`).join(''):'<p class="civic-copy">No active reports. Patrols are on their routes.</p>'}
+      <button class="btn mint" data-cop-report>Report an incident</button>
+      <p class="civic-copy">Dialogue: ${esc(c.dialogue?.enabled?c.dialogue.model:'offline fallback — add GEMINI_API_KEY on the server')}. Free-tier availability and quotas belong to Google; the app cannot change your billing plan.</p>`;
+    const m=this.modal({title:'Neighbourhood',subtitle:'Care · safety · consequences',icon:'🛡️',body,wide:true});
+    $$('[data-csite]',m).forEach(b=>b.onclick=()=>this.openCivicSite(b.dataset.csite));
+    $$('[data-incident-go]',m).forEach(b=>b.onclick=()=>{this.closeModal();this.walkToLocation(b.dataset.incidentGo)});
+    $('[data-cop-report]',m).onclick=()=>this.doCivic('report');
+  }
+
+  async doCivic(op,extra={}) {
+    try{const res=await this.app.doAction('civic',{op,...extra});this.toast({title:'Neighbourhood',body:res.text,kind:'info'});await this.app.apiGet('/api/state').then(s=>this.app.applyState(s));return res}
+    catch(e){this.toast({title:'Not now',body:e.message,kind:'danger'});return null}
+  }
+
+  openCivicSite(id) {
+    const l=this.loc(id),c=this.app.state?.civic||{},near=this.playerNearLoc(id,110);
+    let content='';
+    if(id==='hospital')content=`<p>Emergency care and recovery. Your health: <b>${c.player_health??100}/100</b>.</p><button class="btn mint" data-civic-op="treatment" ${near?'':'disabled'}>Get treatment · up to 18 BLX</button><h3>Recovery ward</h3>${(c.patients||[]).map(n=>`<div class="civic-record"><b>${esc(n.first)}</b><span>${n.health}/100 health · ${n.remaining_minutes} game minutes of recovery</span></div>`).join('')||'<p class="civic-copy">No residents admitted.</p>'}`;
+    if(id==='graveyard')content=`<p class="civic-copy">These are people from this world, not respawning game pieces. Their past messages and relationships remain in the save; their stories do not continue after death.</p>${(c.memorials||[]).map(n=>`<article class="memorial"><span>🕯️</span><div><h3>${esc(n.name)}</h3><p>Age ${n.age} · ${fmtClock(n.minute)}</p><p>${esc(n.cause)}</p></div></article>`).join('')||'<p class="civic-copy">No residents have died. May it stay quiet here.</p>'}<button class="btn ghost" data-civic-op="respects" ${near?'':'disabled'}>Pay respects</button>`;
+    if(id==='police'||id==='barracks')content=`<p class="civic-copy">${id==='police'?'Officers respond to theft and public disputes. Your actions can lead to fines and higher police attention.':'Soldiers support police against armed four-person bandit squads. Keep civilians out of the confrontation.'}</p><button class="btn mint" data-civic-op="report">Report an incident</button><h3>Recent reports</h3>${(c.incidents||[]).slice(-6).reverse().map(i=>`<div class="civic-record"><b>${esc(i.kind)}</b><span>${esc(this.locationName(i.location))} · ${esc(i.phase)}</span></div>`).join('')||'<p class="civic-copy">No reports yet.</p>'}`;
+    if(id==='black_market')content=`<p class="civic-copy">Fictional gun and drug trading, modelled as abstract stakes and stock. No crafting, sourcing or real-world instructions. Returns arrive every eight game hours; police may seize the business. Losses are real in this save.</p><div class="civic-summary">Police attention <b>${c.heat??0}/100</b></div>${['guns','drugs'].map(category=>{const b=c.businesses?.[category],live=b?.status==='operating';return `<section class="business-card"><h3>${category==='guns'?'Gun business':'Drug business'}</h3><p>${live?`Operating · ${b.balance} BLX uncollected`:`${esc(b?.status||'Not owned')} · stake ${category==='guns'?220:160} BLX`}</p>${live?`<button class="btn tiny mint" data-biz="business_collect" data-category="${category}" ${near?'':'disabled'}>Collect</button> <button class="btn tiny ghost" data-biz="business_close" data-category="${category}" ${near?'':'disabled'}>Close business</button>`:`<button class="btn tiny danger" data-biz="business_start" data-category="${category}" ${near?'':'disabled'}>Invest stake</button>`}</section>`}).join('')}`;
+    const body=`<div class="civic-site-head"><span>${l.icon}</span><p>${esc(l.desc)}</p></div>${!near?'<p class="civic-copy">Walk to the entrance for local services.</p>':''}<button class="btn ghost" data-civic-go>Walk here</button><div class="civic-content">${content}</div>`;
+    const m=this.modal({title:l.name,subtitle:'BlaxkVille neighbourhood services',icon:l.icon,body,wide:true});
+    $('[data-civic-go]',m).onclick=()=>{this.closeModal();this.walkToLocation(id)};
+    $$('[data-civic-op]',m).forEach(b=>b.onclick=async()=>{if(await this.doCivic(b.dataset.civicOp))this.openCivicSite(id)});
+    $$('[data-biz]',m).forEach(b=>b.onclick=async()=>{const op=b.dataset.biz,category=b.dataset.category;if(op==='business_start'&&!await this.confirm({title:'Risk this stake?',body:'Police can seize this fictional business. Your stake is not refundable.',confirmLabel:'Invest',danger:true}))return;if(await this.doCivic(op,{category}))this.openCivicSite(id)});
+  }
+
   openVenue(locId, opts = {}) {
     const l = this.loc(locId);
     if (!l) return;
+    if(['hospital','graveyard','police','barracks','black_market'].includes(locId))return this.openCivicSite(locId);
     const st = this.app.state;
     const near = this.playerNearLoc(locId, 170);
     const dist = this.distToLoc(locId);
@@ -1184,13 +1274,25 @@ export class UI {
     } catch (e) { this.toast({ title: 'Can\'t do that', body: e.message, kind: 'danger' }); }
   }
 
+  showBusy(busy, pending=false) {
+    let el=$('#shift-lock');
+    if(!busy&&!pending){el?.remove();this.app.inputLocked=false;return}
+    this.app.inputLocked=true;this.app.view.keys.clear();
+    if(!el){el=document.createElement('div');el.id='shift-lock';el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.setAttribute('aria-label','Shift in progress');document.body.appendChild(el)}
+    const label=pending?'Starting your shift…':(busy.label||'Finishing your shift…');
+    el.innerHTML=`<div class="shift-card"><div class="shift-orbit">💼</div><h2>On the clock</h2><p>${esc(label)}</p><div class="shift-progress"><i></i></div><small>${pending?'Time is passing in BlaxkVille.':`${Math.max(1,Math.ceil(busy.remaining_seconds||1))} seconds · controls locked`}</small></div>`;
+  }
+
   async doWork(locId) {
+    if(this.workPending||this.app.inputLocked)return;
+    this.workPending=true;this.showBusy(null,true);
     try {
       const res = await this.app.doAction('work', { location_id: locId });
       this.closeModal();
       this.toast({ title: 'Shift complete', body: `${res.text}`, kind: 'money' });
       if (res.notices?.length) this.showWhileAway(res.notices);
     } catch (e) { this.toast({ title: 'Can\'t work now', body: e.message, kind: 'danger' }); }
+    finally{this.workPending=false;await this.app.apiGet('/api/state').then(s=>this.app.applyState(s)).catch(()=>this.showBusy(null))}
   }
 
   async doInvestigate(locId) {
@@ -1223,18 +1325,25 @@ export class UI {
     root.classList.remove('hidden');
     root.innerHTML = `
       <div class="phone-scrim" data-pclose="1"></div>
-      <div class="phone">
-        <div class="phone-notch"><i></i></div>
+      <div class="phone one-ui" role="dialog" aria-label="BlaxkVille phone">
+        <div class="phone-status"><span>${esc(fmtClock(this.app.state?.clock?.minute || 0))}</span><i></i><span>▮▮▮  ◉  ▰</span></div>
         <div class="phone-head">
-          <div><h3>BLX OS</h3><p>${esc(this.app.state?.clock?.label || '')} · ${esc(this.app.state?.player?.name || '')}</p></div>
+          <div><h3>Messages</h3><p>${esc(this.app.state?.clock?.label || '')} · ${esc(this.app.state?.player?.name || '')}</p></div>
+          <button class="icon-btn" data-prefresh="1" aria-label="Refresh phone" title="Refresh this tab">↻</button>
           <button class="icon-btn" data-pclose="1" aria-label="Close phone">✕</button>
         </div>
         <div class="phone-tabs">
-          ${[['messages', '💬', 'Messages'], ['feed', '📰', 'Feed'], ['calendar', '📅', 'Calendar'], ['wallet', '🪙', 'Wallet'], ['cases', '🗂️', 'Cases'], ['alerts', '🔔', 'Alerts']]
+          ${[['messages', '💬', 'Messages'], ['feed', '📰', 'Gist Hub'], ['calendar', '📅', 'Calendar'], ['wallet', '🪙', 'Wallet'], ['cases', '🗂️', 'Cases'], ['alerts', '🔔', 'Alerts'], ['guide', '♡', 'Connections']]
             .map(([id, ico, label]) => `<button class="phone-tab ${tab === id ? 'active' : ''}" data-ptab="${id}"><span class="pt-ico">${ico}</span>${label}</button>`).join('')}
         </div>
         <div class="phone-body" id="phone-body"><div class="empty-note">Loading…</div></div>
+        <button class="phone-gesture" data-pclose="1" aria-label="Put phone away"><i></i></button>
       </div>`;
+    this.app.view.keys.clear();
+    root.oninput = e => {
+      if (e.target.matches('input,textarea') && e.target.id) this.phoneDrafts.set(this.draftKey(e.target.id), e.target.value);
+    };
+    root.querySelector('[data-prefresh]').onclick = () => this.renderPhoneBody();
     root.querySelectorAll('[data-pclose]').forEach(el => el.addEventListener('click', () => this.closePhone()));
     root.querySelectorAll('[data-ptab]').forEach(el => el.addEventListener('click', () => {
       this.phoneTab = el.dataset.ptab;
@@ -1251,24 +1360,53 @@ export class UI {
     this.app.voice.stopSpeaking();
   }
 
+  draftKey(id) { return `${this.phoneTab}:${this.phoneThread || ''}:${id}`; }
+
   async renderPhoneBody() {
-    const body = $('#phone-body');
-    if (!body) return;
-    if (this.phoneTab === 'messages') return this.renderPhoneMessages(body);
-    if (this.phoneTab === 'feed') return this.renderPhoneFeed(body);
-    if (this.phoneTab === 'calendar') return this.renderPhoneCalendar(body);
-    if (this.phoneTab === 'wallet') return this.renderPhoneWallet(body);
-    if (this.phoneTab === 'cases') return this.renderPhoneCases(body);
-    if (this.phoneTab === 'alerts') return this.renderPhoneAlerts(body);
+    const old = $('#phone-body');
+    if (!old) return;
+    // Explicit tab changes get a new node: an old async response can never
+    // overwrite the current tab or wire its controls to the wrong resident.
+    const body = document.createElement('div');
+    body.id = 'phone-body'; body.className = 'phone-body';
+    old.replaceWith(body);
+    const heading = $('#phone-root .phone-head h3');
+    if (heading) heading.textContent = ({messages:'Messages',feed:'Gist Hub',calendar:'Calendar',wallet:'Wallet',cases:'Case files',alerts:'Notifications',guide:'Connections'})[this.phoneTab] || 'Messages';
+    const renderers = { guide: 'renderConnectionsGuide', messages: 'renderPhoneMessages', feed: 'renderPhoneFeed', calendar: 'renderPhoneCalendar',
+      wallet: 'renderPhoneWallet', cases: 'renderPhoneCases', alerts: 'renderPhoneAlerts' };
+    await this[renderers[this.phoneTab] || 'renderPhoneMessages'](body);
+    if (!body.isConnected) return;
+    for (const el of $$('input[id],textarea[id]', body)) {
+      el.value = this.phoneDrafts.get(this.draftKey(el.id)) || '';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+
+  renderConnectionsGuide(body) {
+    const people = this.app.state?.npcs || [];
+    const milestones = [
+      ['Break the ice', 'Introduce yourself and listen to someone’s interests.', people.some(n => (n.rel?.familiarity || 0) >= 8)],
+      ['Build a connection', 'Show curiosity, follow up, and build trust over time.', people.some(n => (n.rel?.trust || 0) >= 30 && (n.rel?.familiarity || 0) >= 14)],
+      ['Find mutual interest', 'Flirt only when it is welcome. A no means give them space.', people.some(n => (n.rel?.romance || 0) >= 10 && (n.rel?.familiarity || 0) >= 14)],
+      ['Make a real plan', 'Ask for a date, agree on a place, and show up.', (this.app.state?.date_offers || []).length > 0 || people.some(n => (n.rel?.dates || 0) > 0)],
+    ];
+    body.innerHTML = `<section class="connection-guide"><span class="phone-section-title">Your social life</span>
+      <h2>Good conversation.<br>Real connection.</h2>
+      <p>Meet people, learn what makes them tick, and see whether the interest is mutual. Everyone here is an adult with their own life.</p>
+      ${milestones.map(([title, detail, done]) => `<article class="connection-step"><span>${done ? '✓' : '○'}</span><div><b>${title}</b><p>${detail}</p></div></article>`).join('')}
+      <div class="hint-note"><b>Try this next time</b><br>Ask one open question. Share something genuine. Follow up on what they actually said—not a script. Specific kindness beats repeated compliments.</div>
+      <p class="ai-note">These are game milestones, not a rating of people or a promise of real-world dating results. Gifts never buy affection. Respect boundaries and rejection.</p></section>`;
   }
 
   async renderPhoneCalendar(body) {
     body.innerHTML = '<div class="empty-note">Reading the block calendar…</div>';
     let cal;
     try { cal = await this.app.apiGet('/api/calendar'); } catch (e) {
+      if (!body.isConnected) return;
       body.innerHTML = `<div class="empty-note">Calendar unavailable: ${esc(e.message)}</div>`;
       return;
     }
+    if (!body.isConnected) return;
     const live = cal.live || [];
     const upcoming = cal.upcoming || [];
     const birthdays = cal.birthdays || [];
@@ -1319,6 +1457,7 @@ export class UI {
     try { data = await this.app.apiGet('/api/threads'); } catch { data = { threads: [], contacts: [] }; }
     const threads = data.threads || [];
     const contacts = (data.contacts || []).slice(0, 12);
+    if (!body.isConnected) return;
     body.innerHTML = `
       ${threads.length ? `<div class="phone-section-title">Conversations</div>
       ${threads.map(t => `
@@ -1344,6 +1483,7 @@ export class UI {
     catch (e) { body.innerHTML = `<div class="empty-note">${esc(e.message)}</div>`; return; }
     const npc = data.npc || {};
     const msgs = data.messages || [];
+    if (!body.isConnected) return;
     body.innerHTML = `
       <div class="phone-chat">
         <div class="row" style="margin-bottom:8px">
@@ -1356,11 +1496,7 @@ export class UI {
           <span><b>${esc(npc.name || '')}</b><span>${esc(data.relationship?.label || '')} · familiarity ${Math.round(data.relationship?.familiarity || 0)}%</span></span>
         </div>
         <div class="chat-scroll" id="phone-chat-scroll">
-          ${msgs.length ? msgs.map(m => `
-            <div class="chat-row ${m.sender === 'player' ? 'player' : 'npc'}">
-              ${m.sender !== 'player' ? `<span class="chat-avatar"><img src="${avatarUrl(npc.look || {}, 64, 'head', 'steady')}" style="width:100%;height:100%;object-fit:cover" alt=""/></span>` : ''}
-              <div class="bubble">${esc(m.text)}<span class="bubble-meta">${m.sender === 'player' ? 'You' : esc(npc.first || '')} · ${esc(fmtClock(m.minute))}${m.kind !== 'text' ? ` · ${esc(m.kind.replace('_', ' '))}` : ''}</span></div>
-            </div>`).join('') : '<div class="empty-note">No messages yet. Say something.</div>'}
+          ${msgs.length ? msgs.map(m => this.phoneMessageRow(m, npc)).join('') : '<div class="empty-note">No messages yet. Say something.</div>'}
         </div>
         <div class="phone-composer">
           <input id="phone-msg-input" type="text" maxlength="320" placeholder="Message ${esc(npc.first || '')}…" />
@@ -1369,6 +1505,7 @@ export class UI {
         <p class="voice-status" id="phone-msg-status">Replies arrive on game time — they may be busy, asleep, or just taking their time.</p>
       </div>`;
     const scroll = $('#phone-chat-scroll');
+    this.watchConversationLog(scroll);
     if (scroll) scroll.scrollTop = scroll.scrollHeight;
     $('#phone-msg-send').onclick = () => this.sendPhoneMessage(npcId, npc);
     $('#phone-msg-input').addEventListener('keydown', e => { if (e.key === 'Enter') this.sendPhoneMessage(npcId, npc); });
@@ -1376,25 +1513,53 @@ export class UI {
     $('[data-callchat]', body)?.addEventListener('click', () => { this.closePhone(); this.startCall(npcId); });
   }
 
+  phoneMessageRow(m, npc) {
+    return `<div class="chat-row ${m.sender === 'player' ? 'player' : 'npc'}" data-message-id="${esc(m.id)}">
+      ${m.sender !== 'player' ? `<span class="chat-avatar"><img src="${avatarUrl(npc.look || {}, 64, 'head', 'steady')}" alt=""/></span>` : ''}
+      <div class="bubble">${esc(m.text)}<span class="bubble-meta">${m.sender === 'player' ? 'You' : esc(npc.first || '')} · ${esc(fmtClock(m.minute))}</span></div></div>`;
+  }
+
+  async refreshPhoneThread() {
+    const npcId = this.phoneThread;
+    const scroll = $('#phone-chat-scroll');
+    if (!scroll || !npcId || this.phoneRefreshBusy) return;
+    this.phoneRefreshBusy = true;
+    try {
+      const data = await this.app.apiGet(`/api/thread/${npcId}?mark_read=1`);
+      if (!scroll.isConnected || this.phoneThread !== npcId || this.phoneTab !== 'messages') return;
+      const atBottom = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 60;
+      const signature = JSON.stringify(data.messages.map(m => [m.id, m.text]));
+      if (scroll.dataset.messages !== signature) {
+        scroll.innerHTML = data.messages.map(m => this.phoneMessageRow(m, data.npc)).join('') || '<div class="empty-note">No messages yet. Say something.</div>';
+        scroll.dataset.messages = signature;
+        if (atBottom) scroll.scrollTop = scroll.scrollHeight;
+      }
+    } catch { /* Keep drafts and focus intact during a network hiccup. */ }
+    finally { this.phoneRefreshBusy = false; }
+  }
+
   async sendPhoneMessage(npcId, npc) {
     const input = $('#phone-msg-input');
-    if (!input) return;
+    const send = $('#phone-msg-send');
+    if (!input || send?.disabled) return;
     const text = input.value.trim();
     if (!text) return;
-    input.value = '';
+    send.disabled = true;
     try {
       const res = await this.app.doAction('message', { npc_id: npcId, text });
-      const scroll = $('#phone-chat-scroll');
-      if (scroll) {
-        const row = document.createElement('div');
-        row.className = 'chat-row player';
-        row.innerHTML = `<div class="bubble">${esc(text)}<span class="bubble-meta">You</span></div>`;
-        scroll.appendChild(row);
-        scroll.scrollTop = scroll.scrollHeight;
+      if (input.value.trim() === text) {
+        input.value = '';
+        this.phoneDrafts.delete(`messages:${npcId}:phone-msg-input`);
       }
-      const status = $('#phone-msg-status');
-      if (status) status.textContent = res.text;
+      await this.refreshPhoneThread();
+      const log=$('#phone-chat-scroll');
+      if(log) {log.scrollTop=log.scrollHeight;requestAnimationFrame(()=>{log.scrollTop=log.scrollHeight});}
+      if (input.isConnected) {
+        $('#phone-msg-status').textContent = res.text;
+        input.focus({ preventScroll: true });
+      }
     } catch (e) { this.toast({ title: 'Message failed', body: e.message, kind: 'danger' }); }
+    finally { if (send) send.disabled = false; }
   }
 
   async renderPhoneFeed(body) {
@@ -1403,6 +1568,7 @@ export class UI {
     try { feed = await this.app.apiGet('/api/feed'); } catch (e) { body.innerHTML = `<div class="empty-note">${esc(e.message)}</div>`; return; }
     const state = this.app.state;
     const me = state?.player;
+    if (!body.isConnected) return;
     body.innerHTML = `
       <div class="composer-card">
         <textarea id="feed-composer" maxlength="280" placeholder="What's happening on your block?"></textarea>
@@ -1414,11 +1580,17 @@ export class UI {
     $('#feed-post').onclick = async () => {
       const text = ta.value.trim();
       if (!text) return;
+      const button = $('#feed-post');
+      if (button.disabled) return;
+      button.disabled = true;
       try {
         const res = await this.app.doAction('post', { text });
+        ta.value = '';
+        this.phoneDrafts.delete('feed::feed-composer');
         this.toast({ title: 'Posted', body: res.text, kind: 'good' });
-        this.renderPhoneFeed(body);
+        await this.renderPhoneBody();
       } catch (e) { this.toast({ title: 'Can\'t post that', body: e.message, kind: 'danger' }); }
+      finally { button.disabled = false; }
     };
     this.bindPostActions(body);
   }
@@ -1467,6 +1639,7 @@ export class UI {
     body.innerHTML = '<div class="empty-note">Counting your BLX…</div>';
     let w;
     try { w = await this.app.apiGet('/api/ledger'); } catch (e) { body.innerHTML = `<div class="empty-note">${esc(e.message)}</div>`; return; }
+    if (!body.isConnected) return;
     body.innerHTML = `
       <div class="wallet-hero">
         <div class="wh-label">Balance · closed-loop game credit</div>
@@ -1505,6 +1678,7 @@ export class UI {
     try { data = await this.app.apiGet('/api/cases'); } catch (e) { body.innerHTML = `<div class="empty-note">${esc(e.message)}</div>`; return; }
     const cases = data.cases || [];
     if (!cases.length) { body.innerHTML = '<div class="empty-note">No cases on file.<br/>The block is behaving itself. For now.</div>'; return; }
+    if (!body.isConnected) return;
     body.innerHTML = cases.map(c => `
       <div class="case-card">
         <div class="cc-kicker">${c.status === 'open' ? 'Open case' : 'Closed · ' + c.status}</div>
@@ -1583,7 +1757,7 @@ export class UI {
       ${(c.evidence || []).length >= 2 ? '<div class="hint-note" style="border-color:rgba(127,209,185,.4)">You have enough to clear them. Present the evidence to close the case.</div>' : ''}`;
     const foot = `${(c.evidence || []).length >= 2 ? '<button class="btn primary" data-presentcase="1">📣 Present evidence</button>' : ''}
       <button class="btn ghost" data-close="1">Close</button>`;
-    const m = this.modal({ title: c.title, subtitle: 'Case file · Bellwether Block', icon: '🗂️', body, foot, wide: true });
+    const m = this.modal({ title: c.title, subtitle: 'Case file · BlaxkVille', icon: '🗂️', body, foot, wide: true });
     $$('[data-close]', m).forEach(b => b.onclick = () => this.closeModal());
     $$('[data-clue]', m).forEach(b => b.onclick = () => {
       const loc = b.dataset.clue;
@@ -1647,6 +1821,7 @@ export class UI {
     this.closePhone();
     const root = $('#call-root');
     root.classList.remove('hidden');
+    this.app.music.duck(true);
     this.callSession = { npc, callId, start: Date.now(), turns: 0, muted: false };
     this.voiceCtx = { mode: 'call', npcId: npc.id, callId };
     root.innerHTML = `
@@ -1675,7 +1850,7 @@ export class UI {
         <input id="call-input-text" maxlength="280" placeholder="Type what you say — they answer out loud…" autocomplete="off"/>
         <button class="call-send-text" id="call-send-text" title="Send">↑</button>
       </div>
-      <div class="call-hint">Speak naturally — you can interrupt them mid-sentence. Audio is processed on your device only.</div>
+      <div class="call-hint">Speak naturally — you can interrupt them mid-sentence. The game receives text, not audio. Your browser may use its own speech service.</div>
     `;
     const canvas = root.querySelector('canvas');
     const ctx = canvas.getContext('2d');
@@ -1700,6 +1875,8 @@ export class UI {
     $('#call-text').onclick = () => this.toggleCallComposer();
     $('#call-end').onclick = () => this.endCall();
     this.wireCallComposer();
+    this.watchConversationLog($('#call-captions'));
+    this.toggleCallComposer(true);
     this.callInterval = setInterval(() => {
       if (!this.callSession) return;
       const s = Math.floor((Date.now() - this.callSession.start) / 1000);
@@ -1724,12 +1901,10 @@ export class UI {
   setCallCaption(text, provisional) {
     const box = $('#call-captions');
     if (!box) return;
-    const el = document.createElement('div');
-    el.className = `cap ${provisional ? 'provisional' : ''}`;
-    el.textContent = text;
-    box.appendChild(el);
-    while (box.children.length > 4) box.removeChild(box.firstChild);
-    box.scrollTop = box.scrollHeight;
+    let el=box.querySelector('.cap.provisional');
+    if(!el){el=document.createElement('div');el.className='cap provisional';box.appendChild(el);}
+    el.textContent=text;
+    box.scrollTop=box.scrollHeight;
   }
 
   addCallCaption(who, text, className) {
@@ -1737,18 +1912,27 @@ export class UI {
     if (!box) return;
     const el = document.createElement('div');
     el.className = `cap ${className === 'player' ? 'player' : ''}`;
-    el.textContent = text;
+    el.textContent = `${className === 'player' ? 'You' : who}: ${text}`;
     box.appendChild(el);
-    while (box.children.length > 4) box.removeChild(box.firstChild);
+    while (box.children.length > 60) box.removeChild(box.firstChild);
     box.scrollTop = box.scrollHeight;
+    requestAnimationFrame(()=>{if(box.isConnected)box.scrollTop=box.scrollHeight});
   }
 
-  async sendCallTurn(text) {
+  async sendCallTurn(text, alreadyShown=false) {
     if (!this.callSession) return;
-    this.addCallCaption('You', text, 'player');
-    const npc = this.callSession.npc;
+    const session = this.callSession;
+    session.queue ||= [];
+    if(session.pending && session.queue.length>=5){this.toast({title:'One moment',body:'Let them finish this reply, then repeat that last line.'});return;}
+    $('#call-captions .provisional')?.remove();
+    if(!alreadyShown)this.addCallCaption('You', text, 'player');
+    if(session.pending){session.queue.push(text);return;}
+    session.pending=true;
+    const send=$('#call-send-text');if(send)send.disabled=true;
+    const npc = session.npc;
     try {
-      const res = await this.app.doAction('call_turn', { call_id: this.callSession.callId, text });
+      const res = await this.app.doAction('call_turn', { call_id: session.callId, text });
+      if (this.callSession !== session) return;
       this.callSession.turns++;
       if (!this.callSession.muted) {
         this.app.voice.speak(res.reply, npc, {
@@ -1762,7 +1946,14 @@ export class UI {
       }
       this.addCallCaption(npc.first, res.reply, 'npc');
     } catch (e) {
-      this.addCallCaption('System', e.message, 'npc');
+      if(this.callSession===session)this.addCallCaption('System', e.message, 'npc');
+    } finally {
+      if(this.callSession===session){
+        session.pending=false;
+        const next=session.queue.shift();
+        if(next)this.sendCallTurn(next,true);
+        else if(send?.isConnected)send.disabled=false;
+      }
     }
   }
 
@@ -1786,7 +1977,7 @@ export class UI {
     if (!input || !send) return;
     const fire = () => {
       const text = input.value.trim();
-      if (!text || !this.callSession) return;
+      if (!text || !this.callSession || this.callSession.pending) return;
       input.value = '';
       this.sendCallTurn(text);
     };
@@ -1802,6 +1993,7 @@ export class UI {
     const { callId, start, turns } = this.callSession;
     const duration = Math.round((Date.now() - start) / 1000);
     this.callSession = null;
+    this.app.music.duck(false);
     this.app.voice.stopSpeaking();
     this.app.voice.stopRecognition();
     clearInterval(this.callInterval);
@@ -1876,14 +2068,14 @@ export class UI {
         <div class="help-item"><span class="hi-ico">🚶</span><span><b>Move</b>Click the ground or use WASD / arrow keys. Click a building to see activities. Press <kbd>E</kbd> near someone to talk.</span></div>
         <div class="help-item"><span class="hi-ico">💬</span><span><b>Talk & relationships</b>Free text and quick intents are understood as greetings, jokes, compliments, flirting, apologies, gossip and more. Actions change familiarity, trust, affinity, romance and tension.</span></div>
         <div class="help-item"><span class="hi-ico">🎁</span><span><b>Gifts</b>Meaning is recipient-specific. Gifts that match hobbies and tastes land better; repeated identical gifts stop working as a shortcut.</span></div>
-        <div class="help-item"><span class="hi-ico">📞</span><span><b>Calls</b>Call residents you know. Speak with the mic (on-device recognition) or type. You can interrupt the NPC mid-sentence — that's barge-in.</span></div>
+        <div class="help-item"><span class="hi-ico">📞</span><span><b>Calls</b>Call residents you know. Speak with the mic (browser speech recognition) or type. You can interrupt the NPC mid-sentence — that's barge-in.</span></div>
         <div class="help-item"><span class="hi-ico">🧠</span><span><b>Memory & beliefs</b>Residents remember events they witnessed or were told about. Rumors have a source and a confidence level. NPCs can be wrong; challenge a claim you know is false.</span></div>
         <div class="help-item"><span class="hi-ico">🌀</span><span><b>Cartoon chaos</b>Rivalries can escalate into non-graphic dust clouds. Nobody is hurt. People gossip, security intervenes, and there are social consequences. You can even nudge tensions — at a cost to your reputation.</span></div>
         <div class="help-item"><span class="hi-ico">🪙</span><span><b>BLX economy</b>Earn from shifts, quests and your street cart; spend on rent, food, gifts and dates. BLX is fictional and closed-loop.</span></div>
         <div class="help-item"><span class="hi-ico">🗂️</span><span><b>Stories</b>The director builds causal arcs from actual state. A false accusation can become a case file — investigate locations, present evidence, and watch opinions change.</span></div>
       </div>
       <div class="ai-note">Transparency: all residents are fictional simulations, not real people. AI characters are designed to have their own lives and to decline, disagree and leave. No manipulative dependency mechanics. Romance is adult-only (22+).</div>`;
-    this.modal({ title: 'How to live here', subtitle: 'A short guide to Bellwether Block', icon: '❓', body, wide: true, foot: '<button class="btn primary" data-close="1">Got it</button>' });
+    this.modal({ title: 'How to live here', subtitle: 'A short guide to BlaxkVille', icon: '❓', body, wide: true, foot: '<button class="btn primary" data-close="1">Got it</button>' });
     $$('[data-close]').forEach(b => b.onclick = () => this.closeModal());
   }
 
@@ -1903,14 +2095,14 @@ export class UI {
         </select></div>
       <div class="settings-row"><div><b>Speech rate</b><span>Applies to all spoken lines</span></div>
         <div class="range-line"><input id="rate-range" type="range" min="0.7" max="1.3" step="0.05" value="${this.settings.ttsRate}" /><span id="rate-value" class="mono">${this.settings.ttsRate.toFixed(2)}×</span></div></div>
-      <div class="settings-row"><div><b>Microphone</b><span>${this.settings.voiceURI ? '' : ''}Audio is processed on-device; the server never receives audio.</span></div>
+      <div class="settings-row"><div><b>Microphone</b><span>${this.settings.voiceURI ? '' : ''}The game receives text, not audio. Browser speech services may be cloud-based.</span></div>
         <button class="btn tiny ${this.app.voice.micConsent ? 'mint' : 'ghost'}" id="mic-status">${this.app.voice.micConsent ? 'Enabled' : 'Not enabled'}</button></div>
       <div class="divider"></div>
       <div class="row wrap">
         <a class="btn ghost" href="/api/save" download>⬇ Export save</a>
         <button class="btn danger" id="reset-world">⚠ Start a new world</button>
       </div>
-      <div class="ai-note">BLXVERSE v0.1 · vertical slice. All residents are fictional simulations. BLX is a closed-loop fictional credit with no cash value. No audio recordings are stored, no real-money purchases exist, and nothing is trained on your conversations.</div>`;
+      <div class="ai-note">BlaxkVille v0.4 · social life simulation. All residents are fictional simulations. BLX is a closed-loop fictional credit with no cash value. No audio recordings are stored, no real-money purchases exist, and local dialogue works without a key. When Gemini or another AI provider is enabled, dialogue text and character context are sent to that provider.</div>`;
     const m = this.modal({ title: 'Settings', subtitle: 'Comfort, voice and data', icon: '⚙️', body });
     $$('[data-toggle]', m).forEach(b => b.onclick = () => {
       const key = b.dataset.toggle;
@@ -1977,7 +2169,7 @@ export class UI {
         <div class="metric"><span>Target</span><b>${voice.target_ms ?? 800} <small>ms</small></b></div>
         <div class="metric"><span>Samples</span><b>${voice.samples ?? 0}</b></div>
       </div>
-      <div class="ai-note">Latency is measured in your browser from final transcript to first audible NPC speech. It includes network and browser speech synthesis. If a browser has no on-device recognition, voice is disabled rather than faked.</div>
+      <div class="ai-note">Latency is measured in your browser from final transcript to first audible NPC speech. It includes network and browser speech synthesis. If speech recognition is unavailable, you can type instead. Browser vendors may use cloud-based speech services.</div>
       <div class="side-section-title" style="margin-top:14px">Economy</div>
       <div class="metric-grid">
         <div class="metric"><span>Money supply</span><b>${fmtNum(eco.money_supply ?? 0)} <small>BLX</small></b></div>
@@ -1988,7 +2180,7 @@ export class UI {
       <div class="ai-note">${esc(eco.note || '')}</div>
       <div class="side-section-title" style="margin-top:14px">Active storylines</div>
       ${(ai.active_arcs || []).map(a => `<div class="story-card" style="margin-bottom:8px"><div class="sc-kicker">${esc(a.kind)} · ${esc(a.stage_title || '')}</div><h4>${esc(a.title)}</h4><p>${esc(a.summary)}</p></div>`).join('') || '<div class="empty-note">No active arcs.</div>'}
-      <div class="ai-note">AI policy: foreground residents get dialogue + memory retrieval + voice; nearby residents use rules and selective dialogue; background residents advance via batched simulation. Remote LLM calls: <b>${ai.remote_llm_calls ?? 0}</b>. Estimated AI spend per active player-hour: <b>$${(ai.estimated_ai_spend_per_active_hour ?? 0).toFixed(2)}</b> (offline composer in this build).</div>`;
+      <div class="ai-note">AI policy: off-screen residents keep their schedules. Dialogue uses the offline composer unless a server-side AI key is configured. Remote LLM calls: <b>${ai.remote_llm_calls ?? 0}</b>. AI provider spend is not measured here; check your provider’s billing dashboard.</div>`;
     this.modal({ title: 'World dashboard', subtitle: 'The simulation under the hood', icon: '📊', body, wide: true, foot: '<button class="btn primary" data-close="1">Close</button>' });
     $$('[data-close]').forEach(b => b.onclick = () => this.closeModal());
   }
@@ -2045,7 +2237,8 @@ export class UI {
 
   /* feed for sidebar / re-render after actions */
   refreshOpenPanel() {
-    if ($('#phone-root') && !$('#phone-root').classList.contains('hidden')) this.renderPhoneBody();
+    // Never replace a live composer. Only the message list updates in place.
+    if ($('#phone-root:not(.hidden)') && this.phoneTab === 'messages' && this.phoneThread) this.refreshPhoneThread();
   }
 }
 

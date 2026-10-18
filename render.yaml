@@ -1,0 +1,30 @@
+# Paid Starter + disk: saves survive restarts and deploys.
+# One process / one instance ONLY: the simulation is an in-memory shared world.
+services:
+  - type: web
+    name: blxverse
+    runtime: python
+    plan: starter
+    numInstances: 1
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -u run_server.py
+    healthCheckPath: /api/health
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: BLXVERSE_HOST
+        value: 0.0.0.0
+      - key: BLXVERSE_DATA_DIR
+        value: /var/data/blxverse
+      # Optional: add GEMINI_API_KEY in Render Environment for AI dialogue.
+      - key: BLXVERSE_LLM_DISABLED
+        value: "0"
+      # Browser login: username blxverse; password in Render's Environment tab.
+      # Remove this variable ONLY if you intentionally want a public shared save.
+      - key: BLXVERSE_ACCESS_PASSWORD
+        generateValue: true
+    disk:
+      name: blxverse-data
+      mountPath: /var/data
+      sizeGB: 1

@@ -14,6 +14,7 @@ import re
 
 from blxverse.content.dialogue_content import ARCHETYPES, MOOD_LINES, line_pool
 from blxverse.content.names import TOPICS
+from blxverse.content.voices import BEATS, dress_reply, identity, variant_indices
 from blxverse.engine.models import NPC, Player, Relationship
 from blxverse.engine.rng import RngHub
 
@@ -201,8 +202,8 @@ def _grounded_answer(
         ]
     elif kind == "music":
         options = [
-            f"Music is the whole personality. {activity} was originally set to a tempo.",
-            "Always. First thing on, last thing off. Ask me about the good stuff sometime.",
+            f"My listening usually leans toward {npc.favorite_music}. My other interests include {', '.join(npc.hobbies)}.",
+            f"I like {npc.favorite_music}. I would be curious to hear what you listen to.",
         ]
     else:  # generic question with '?'
         options = [
@@ -220,7 +221,15 @@ def _fill(template: str, npc: NPC, player: Player, venue_name: str, topic: str, 
             .replace("{venue}", venue_name)
             .replace("{topic}", topic)
             .replace("{item}", item_name)
-            .replace("{job}", npc.occupation))
+            .replace("{job}", npc.occupation)
+            .replace("{mood}", npc.mood.label())
+            .replace("{goal}", npc.goal_short)
+            .replace("{long_goal}", npc.goal_long)
+            .replace("{activity}", _clean_activity(npc))
+            .replace("{hobby}", ", ".join(npc.hobbies))
+            .replace("{value}", npc.values[0] if npc.values else "kindness")
+            .replace("{food}", npc.favorite_food)
+            .replace("{music}", npc.favorite_music))
 
 
 def _venue_label(location_id: str, location_names: dict[str, str]) -> str:
@@ -280,19 +289,18 @@ def compose_reply(
     rng = hub.fork(f"compose:{npc.id}:{int(intent == 'fallback')}")
     venue = _venue_label(npc.location_id, location_names) if npc.location_id != "home" else "home"
     topic = _topic_for(npc, hub)
-    arch = npc.archetype if npc.archetype in ARCHETYPES else "spark"
+    voice = identity(npc)
+    arch = voice['style'] if voice['style'] in ARCHETYPES else "spark"
+    cursor = dict(npc.flags.get('dialogue_cursors', {}))
+    turn = int(cursor.get(intent, 0))
+    pool = tuple(BEATS.get(intent, BEATS['fallback'])) + line_pool(intent, arch)
+    indices = variant_indices(npc, hub.seed, intent, turn, len(pool))
 
     # --- choose base line -------------------------------------------------
     if forced_lines:
         base = forced_lines[rng.randrange(len(forced_lines))]
     else:
-        pool = line_pool(intent, arch) or line_pool("fallback", arch)
-        # a moody NPC occasionally leads with snark, unless you're apologizing
-        if npc.mood.irritation >= 62 and intent not in ("apology", "goodbye", "deep") and rng.random() < 0.45:
-            prefix = MOOD_IRRITATED_PREFIX[rng.randrange(len(MOOD_IRRITATED_PREFIX))]
-            base = f"{prefix} {pool[rng.randrange(len(pool))]}"
-        else:
-            base = pool[rng.randrange(len(pool))]
+        base = pool[indices[0]]
 
     reply = _fill(base, npc, player, venue, topic, item_name)
 
@@ -308,6 +316,9 @@ def compose_reply(
         )
         if grounded:
             reply = grounded
+
+    if not forced_lines:
+        reply = dress_reply(npc, reply, indices, intent)
 
     # --- continuity: recognise familiar faces -----------------------------
     if intent == "greeting" and rel.familiarity >= 30 and rng.random() < 0.5:
@@ -357,6 +368,7 @@ def compose_reply(
         "npc_id": npc.id, "text": reply, "intent": intent, "topic": topic,
         "effects": effects, "memories": memories,
         "mood": npc.mood.label(), "archetype": arch,
+        "dialogue_cursor": turn + 1, "voice_identity": voice['signature'],
     }
 
 

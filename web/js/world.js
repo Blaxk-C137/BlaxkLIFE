@@ -1,8 +1,11 @@
+import { residentOpacity } from './visibility.js';
 /* =========================================================================
    World renderer & camera
    Canvas 2D, procedural static base layer + animated residents & effects.
    ========================================================================= */
-import { buildStaticWorld, drawSprite, avatarUrl } from './art.js';
+import { buildStaticWorld, drawSprite, drawScenery, avatarUrl } from './art.js';
+
+import { MotionTrack } from './motion.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -21,6 +24,7 @@ export class WorldView {
     this.clock = { hour: 7, weather: 'clear skies' };
     this.camera = { x: 900, y: 800, zoom: 0.92, targetZoom: 0.92 };
     this.display = new Map();
+    this.tracks = new Map();
     this.playerDisplay = { x: 900, y: 800 };
     // The player walks the server's A* route, waypoint by waypoint. Never a
     // straight line to the clicked point: that crossed buildings and fought
@@ -53,6 +57,7 @@ export class WorldView {
     this.staticLayer = buildStaticWorld(world);
     this.npcs.clear();
     this.display.clear();
+    this.tracks.clear();
     for (const n of world.npcs || []) {
       this.npcs.set(n.id, n);
       this.display.set(n.id, { x: n.x, y: n.y });
@@ -118,13 +123,21 @@ export class WorldView {
     if (prev && Math.abs((this.player.x || 0) - (prev.x || 0)) > 0.2) {
       this.walk.facing = this.player.x > prev.x ? 1 : -1;
     }
-    for (const npc of state.npcs || []) {
+    this.civic = state.civic || {};
+    const now = performance.now();
+    this.streetBubbles = (this.civic.bubbles || []).map(b=>({...b,startAt:now+b.starts_in*1000,endAt:now+b.remaining*1000}));
+    const actors = [...(state.npcs || []), ...(state.civic?.actors || [])];
+    const liveIds = new Set(actors.map(n=>n.id));
+    for (const id of this.npcs.keys()) if(!liveIds.has(id)){this.npcs.delete(id);this.display.delete(id);this.tracks.delete(id)}
+    for (const npc of actors) {
       const cached = this.npcs.get(npc.id);
       if (cached) Object.assign(cached, npc);
       else this.npcs.set(npc.id, npc);
       let d = this.display.get(npc.id);
       if (!d) { d = { x: npc.x, y: npc.y }; this.display.set(npc.id, d); }
-      d.tx = npc.x; d.ty = npc.y;
+      let track = this.tracks.get(npc.id);
+      if (!track) { track = new MotionTrack(); this.tracks.set(npc.id, track); }
+      track.push(npc, performance.now());
     }
     this.clock = state.clock || this.clock;
     this.dimmed = !!state.setup;
@@ -228,7 +241,7 @@ export class WorldView {
     }, { passive: false });
 
     window.addEventListener('keydown', (e) => {
-      if (e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+      if (e.target?.closest('input,textarea,select,[contenteditable="true"]') || document.querySelector('#phone-root:not(.hidden),#overlay-root .modal')) return;
       const k = e.key.toLowerCase();
       if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) {
         this.keys.add(k === 'arrowup' ? 'w' : k === 'arrowdown' ? 's' : k === 'arrowleft' ? 'a' : k === 'arrowright' ? 'd' : k);
@@ -239,13 +252,16 @@ export class WorldView {
       this.keys.delete(k === 'arrowup' ? 'w' : k === 'arrowdown' ? 's' : k === 'arrowleft' ? 'a' : k === 'arrowright' ? 'd' : k);
     });
     window.addEventListener('blur', () => this.keys.clear());
+    document.addEventListener('focusin', e => { if (e.target.matches('input,textarea,select')) this.keys.clear(); });
   }
 
   hitTest(sx, sy) {
     const w = this.screenToWorld(sx, sy);
     let best = null, bestD = 1e9;
     for (const npc of this.npcs.values()) {
-      const d = Math.hypot(npc.x - w.x, npc.y - w.y);
+      if (npc.role || residentOpacity(npc, this.display.get(npc.id), this.playerDisplay, this.camera, this.viewW, this.viewH) <= .05) continue;
+      const display = this.display.get(npc.id) || npc;
+      const d = Math.hypot(display.x - w.x, display.y - w.y);
       const r = 20 / this.camera.zoom + 10;
       if (d < r && d < bestD) { best = { type: 'npc', id: npc.id }; bestD = d; }
     }
@@ -336,11 +352,16 @@ export class WorldView {
       c.y = clamp(c.y, this.viewH / (2 * c.zoom) - 70, 1300 - this.viewH / (2 * c.zoom) + 70);
     }
 
-    // npc interpolation
+    // Delayed route playback keeps residents moving on EVERY animation frame,
+    // not only in a synchronized burst after the state poll.
     for (const [id, d] of this.display) {
-      if (d.tx === undefined) continue;
-      d.x += (d.tx - d.x) * Math.min(1, dt * 6.5);
-      d.y += (d.ty - d.y) * Math.min(1, dt * 6.5);
+      const point = this.tracks.get(id)?.sample(performance.now());
+      if (!point) continue;
+      const dx=point.x-d.x,dy=point.y-d.y, distance=Math.hypot(dx,dy);
+      d.moving = distance > 0.015;
+      if (Math.abs(dx)>0.01) d.facing = dx>0 ? 1 : -1;
+      d.stride=(d.stride || 0)+Math.min(distance,20)/10;
+      d.x=point.x;d.y=point.y;
     }
 
     // Keyboard steering: aim from where the sprite actually is (not the
@@ -416,9 +437,10 @@ export class WorldView {
     // sprites sorted by y
     const list = [];
     for (const npc of this.npcs.values()) {
+      if (residentOpacity(npc, this.display.get(npc.id), this.playerDisplay, this.camera, this.viewW, this.viewH) <= .05) continue;
       const d = this.display.get(npc.id);
       if (!d) continue;
-      list.push({ npc, x: d.x, y: d.y });
+      list.push({ npc: {...npc, status:d.moving ? 'walking' : npc.status === 'walking' ? 'at' : npc.status, facing:d.facing || 1, stride:d.stride}, x: d.x, y: d.y });
     }
     if (this.player) {
       const p = {
@@ -428,18 +450,25 @@ export class WorldView {
       };
       list.push({ npc: p, x: this.playerDisplay.x, y: this.playerDisplay.y });
     }
+    for (const scenery of this.world.scenery || []) list.push({ scenery, x:scenery.x, y:scenery.y });
     list.sort((a, b) => a.y - b.y);
     const labelRects = [];
     for (const item of list) {
+      if (item.scenery) { drawScenery(ctx,item.scenery); continue; }
       const npc = { ...item.npc, x: item.x, y: item.y };
       const isHover = this.hover?.type === 'npc' && this.hover.id === (npc.id || 'player');
+      ctx.save();
+      if (!npc.isPlayer) ctx.globalAlpha = residentOpacity(npc, item, this.playerDisplay, c, this.viewW, this.viewH);
       drawSprite(ctx, npc, this.t, { zoom: c.zoom, dim: this.dimmed, scale: isHover ? 1.05 : 1, labels: labelRects });
+      ctx.restore();
       if (isHover && !npc.isPlayer) {
         ctx.strokeStyle = 'rgba(255,180,84,.85)';
         ctx.lineWidth = 2 / c.zoom;
         ctx.beginPath(); ctx.ellipse(item.x, item.y, 22, 9, 0, 0, Math.PI * 2); ctx.stroke();
       }
     }
+
+    this._drawStreetBubbles(ctx);
 
     // dust clouds
     for (const ch of this.chaos) this._drawChaos(ctx, ch);
@@ -448,6 +477,27 @@ export class WorldView {
     ctx.restore();
 
     this._drawNightTint(ctx);
+  }
+
+  _drawStreetBubbles(ctx) {
+    const now=performance.now(), placed=[], c=this.camera;
+    for(const b of this.streetBubbles||[]){
+      if(now<b.startAt||now>b.endAt)continue;
+      const npc=this.npcs.get(b.npc_id), p=this.display.get(b.npc_id);
+      if(!npc||residentOpacity(npc,p,this.playerDisplay,c,this.viewW,this.viewH)<=.1)continue;
+      ctx.save();ctx.font=`500 ${12/c.zoom}px system-ui`;
+      const maxW=186/c.zoom, words=b.text.split(' '), lines=[];let line='';
+      for(const word of words){const next=line?line+' '+word:word;if(ctx.measureText(next).width>maxW&&line){lines.push(line);line=word}else line=next}if(line)lines.push(line);
+      const textLines=lines.slice(0,3), w=Math.min(maxW,Math.max(...textLines.map(l=>ctx.measureText(l).width)))+24/c.zoom, h=(textLines.length*16+18)/c.zoom;
+      const minX=c.x-this.viewW/(2*c.zoom)+8/c.zoom,maxX=c.x+this.viewW/(2*c.zoom)-w-8/c.zoom;
+      const x=Math.max(minX,Math.min(maxX,p.x-w/2));let y=p.y-89/c.zoom-h;
+      for(let i=0;i<3&&placed.some(r=>x<r.x+r.w&&x+w>r.x&&y<r.y+r.h&&y+h>r.y);i++)y-=h+6/c.zoom;
+      placed.push({x,y,w,h});ctx.globalAlpha=Math.min(1,(b.endAt-now)/350);
+      ctx.fillStyle=b.kind==='greeting'?'#d5f1e5':b.kind==='conflict'?'#ffe1d5':'#f5f0e7';
+      ctx.shadowColor='#0008';ctx.shadowBlur=7/c.zoom;rrPath(ctx,x,y,w,h,10/c.zoom);ctx.fill();ctx.shadowBlur=0;
+      ctx.beginPath();ctx.moveTo(p.x-4/c.zoom,y+h);ctx.lineTo(p.x,y+h+7/c.zoom);ctx.lineTo(p.x+6/c.zoom,y+h);ctx.fill();
+      ctx.fillStyle='#25333a';textLines.forEach((l,i)=>ctx.fillText(l,x+12/c.zoom,y+(18+i*16)/c.zoom));ctx.restore();
+    }
   }
 
   _drawFountain(ctx) {

@@ -281,6 +281,7 @@ class NPC:
             "spending_habit": self.spending_habit, "mood": self.mood.to_dict(),
             "energy": round(self.energy, 1), "x": round(self.x, 1), "y": round(self.y, 1),
             "location": self.location_id, "status": self.status, "activity": self.activity,
+            "target": self.target,
             "plans": self.plans, "spotlight": self.spotlight, "flags": self.flags,
             "group_hint": self.group_hint,
         }
@@ -306,7 +307,7 @@ class NPC:
             mood=Mood.from_dict(d["mood"]), energy=float(d["energy"]), x=float(d["x"]),
             y=float(d["y"]), home_xy=tuple(d["look"].get("home_xy", (0, 0))),
             location_id=d.get("location", "home"), status=d.get("status", "idle"),
-            activity=d.get("activity", ""), plans=list(d.get("plans", [])),
+            activity=d.get("activity", ""), target=d.get("target"), plans=list(d.get("plans", [])),
             spotlight=bool(d.get("spotlight")), flags=dict(d.get("flags", {})),
             group_hint=d.get("group_hint", ""),
         )

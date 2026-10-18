@@ -100,7 +100,7 @@ def test_no_schedule_gap_makes_residents_sleep_in_the_daytime(sim):
 
     sim.advance((23 * 60 + 30) - sim.minute)
     asleep = sum(1 for n in sim.npcs if n.status == "sleeping")
-    assert asleep >= 50, f"only {asleep} residents asleep at 23:30"
+    assert asleep >= 50, f"only {asleep} residents asleep at 23:30: {[(n.first, n.status, n.location_id) for n in sim.npcs if n.status != 'sleeping']}"
 
 
 def test_crowded_venues_do_not_stack_residents(sim):

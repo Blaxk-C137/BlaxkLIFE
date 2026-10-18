@@ -13,7 +13,14 @@ from blxverse import config
 from blxverse.content import traits as T
 from blxverse.content.dialogue_content import ARCHETYPES, PERSONALITY_QUIRKS
 from blxverse.content.locations import HOMES, LOCATIONS, WORKPLACE_BY_OCCUPATION
-from blxverse.content.names import FIRST_NAMES_F, FIRST_NAMES_M, FIRST_NAMES_N, SURNAMES
+from blxverse.content.names import (
+    FEATURED_F,
+    FEATURED_M,
+    FIRST_NAMES_F,
+    FIRST_NAMES_M,
+    FIRST_NAMES_N,
+    SURNAMES,
+)
 from blxverse.engine.models import NPC, Mood
 from blxverse.engine.rng import RngHub, stable_hash
 
@@ -141,7 +148,8 @@ def generate_npcs(hub: RngHub, count: int = config.NPC_COUNT) -> list[NPC]:
 
     plan = ["female"] * 30 + ["male"] * 27 + ["nonbinary"] * 3
     rng.shuffle(plan)
-    count = min(count, 60)
+    plan.extend(["female"] * 12)
+    count = min(count, len(plan))
     plan = plan[:count]
 
     npcs: list[NPC] = []
@@ -238,10 +246,25 @@ def generate_npcs(hub: RngHub, count: int = config.NPC_COUNT) -> list[NPC]:
         ))
 
     _guarantee_doc_characters(npcs)
+    apply_blaxkville_names(npcs)
     _ensure_unique_first_names(npcs)
     for n in npcs:
         n.flags.setdefault("birthday_in", 3 + (stable_hash("bday", n.id) % 48))
     return npcs
+
+
+def apply_blaxkville_names(npcs: list[NPC]) -> None:
+    """Idempotent name migration; preserve ids, relationships, and story anchors."""
+    protected = {"Zara", "Daniel", "Femi"}
+    requested = set(FEATURED_M + FEATURED_F)
+    for gender, names in (("male", FEATURED_M), ("female", FEATURED_F)):
+        present = {n.first for n in npcs}
+        eligible = [n for n in npcs if n.gender == gender and n.first not in protected | requested]
+        for name in names:
+            if name not in present and eligible:
+                npc = eligible.pop(0)
+                npc.first = name
+                present.add(name)
 
 
 def _ensure_unique_first_names(npcs: list[NPC]) -> None:

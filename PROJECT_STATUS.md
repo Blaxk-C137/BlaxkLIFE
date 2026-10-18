@@ -5,7 +5,7 @@ recorded manual run exercised it against the real simulation, not that the code
 merely exists. Last full verification: see `CHANGELOG.md` and the commands at
 the bottom of this file.
 
-- Version: `0.2.0` · Schema: `3`
+- Version: `0.4.0` · Schema: `3`
 - Architecture: Python standard-library simulation server + dependency-free
   browser client (canvas world, DOM UI). No bundler, no CDN, no external assets.
 - Save format: JSON with schema version, atomic write + `.bak` rotation.
@@ -14,7 +14,7 @@ the bottom of this file.
 
 ```bash
 python3 run_server.py --port 8000      # serves API + web/ on 0.0.0.0
-pytest -q                              # 70 tests, ~8 min (API tests spawn a server)
+pytest -q                              # 106 tests, allow several minutes (API tests spawn a server)
 ruff check blxverse tests scripts      # lint
 python3 scripts/browser_smoke.py --base http://localhost:8000   # optional, needs Playwright
 python3 scripts/movement_probe.py --base http://localhost:8000  # click-to-walk metrics
@@ -22,6 +22,60 @@ python3 scripts/movement_probe.py --base http://localhost:8000  # click-to-walk 
 
 Open `http://localhost:8000`. First run shows the character creator; afterwards
 the server resumes the save in `data/saves/world.json`.
+
+## BlaxkVille 0.4: resident life and social practice
+
+See [`docs/BLAXKVILLE_0.4.md`](docs/BLAXKVILLE_0.4.md).
+
+- Approach/camera actor culling, with schedules and contacts retained offscreen.
+- Doorstep home entry, hidden interiors, natural morning departures.
+- Continuous autonomous outdoor life, reserved destinations, body clearance,
+  deterministic passing and stalled-route recovery; conversation pause is visible.
+- 72 adult residents; 12 added women; requested male and female names guaranteed.
+- Native Gemini text integration for chats/texts/calls, server-only key, bounded
+  queued text workers, network outside world lock, offline fallback.
+- One UI-inspired Messages phone; blue/grey bubbles, safe draft/focus behavior.
+- Original quiet procedural score with mute persistence and dialogue ducking.
+- Connections phone guide and context-specific conversation notes; typed date
+  requests share quick-intent consent gates. Refusals do not award romance.
+- No live Gemini-key test, Gemini Live voice, actual Render deployment, physical
+  device audit or guarantee of real-world dating outcomes is claimed.
+
+## BlaxkVille 0.3: reported bugs
+
+See [`docs/BLAXKVILLE_0.3.md`](docs/BLAXKVILLE_0.3.md) for root causes and limits.
+
+- Phone composer stays mounted during polling; drafts/focus/failed sends verified.
+- Continuous route-aware NPC playback, individual speeds, articulated sprites.
+- Shared solid tree/bush bases + actor-depth foliage (74 props).
+- Transient notifications AND location chip are dismissible and expire at 5 s.
+- Six viewport widths and emulated keyboard layout pass the Playwright UI gate.
+- Requested names guaranteed in a full cast; existing IDs/relationships retained.
+- Offline voices: 72,000 actual sampled greetings, minimum 1,200 distinct per
+  resident. 1,152,000 **nominal composition slots**, not hand-authored stories,
+  per resident; outcome-bearing/safety turns intentionally constrain variations.
+- City renamed to **BlaxkVille**, dimensions unchanged at **1900 × 1300**.
+- Known limitation: 800 ms NPC playback delay; physical mobile devices and full
+  accessibility are not exhaustively audited. Shared-world/one-worker hosting
+  constraints remain unchanged.
+
+## Render CPU hosting
+
+- Included: `render.yaml` (one Starter service + 1 GB disk), Python 3.13 runtime
+  selection, `PORT` binding, generated shared password, bounded HTTP threads,
+  graceful SIGTERM final save, and an isolated boot/restart + CPU probe.
+- Instructions: [`docs/RENDER.md`](docs/RENDER.md).
+- Full verification: 106/106 tests passed; Ruff, Python compile and all JavaScript
+  syntax checks passed. See `docs/release-check-0.4.json`.
+- Browser verified: password-authenticated page, ES modules, state polling, and
+  Calendar with zero page errors/HTTP failures; click-to-walk probe also passed.
+- Measured locally: 72 residents at 4×, 120 state polls / 30 seconds; 11.26% of one
+  CPU core, sampled peak RSS 29.76 MiB. See `docs/render-check-0.4.json`.
+- **Not externally deployed or benchmarked on Render.** No Render account/API
+  access is connected. A paid disk is required for durable filesystem saves.
+- **Still single-player:** all visitors share the same player/world. Password
+  protection is one shared credential, not accounts. Do not run multiple workers
+  or replicas against the same disk.
 
 ## Feature matrix
 
@@ -33,7 +87,7 @@ for core paths but not exhaustive · **Partial** = works with known gaps noted �
 
 | Feature | Status | Evidence / notes |
 |---|---|---|
-| 60 residents generated per seed | Done | `test_world.py`: 60 NPCs, unique first names, 18 spotlight |
+| 72 adult residents generated per seed | Done | `test_world.py`: 72 NPCs, unique first names, 18 spotlight |
 | 12–20 resident vertical slice with named cast | Done | Zara Adeyemi, Daniel Okafor, Femi Balogun + spotlight tier |
 | 11 venues, homes, park, square | Done | `/api/world` payload asserted |
 | Households, coworkers, friendships, couples, exes, rivalries | Done | fabric generation; `test_world.py` relationship assertions |
@@ -164,7 +218,7 @@ for core paths but not exhaustive · **Partial** = works with known gaps noted �
 
 ## Definition of done for this slice
 
-- [x] `pytest -q` green (70 tests)
+- [x] full pytest suite green (106 tests)
 - [x] `ruff check` clean, `compileall` clean, `node --check` clean on all JS
 - [x] End-to-end flow works in a real browser: create → walk → talk → text →
       call → gift → work → eat → investigate → present case → date → save/reload

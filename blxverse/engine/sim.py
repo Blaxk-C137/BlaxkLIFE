@@ -23,6 +23,8 @@ import math
 import os
 import random
 import time
+from functools import lru_cache
+from types import SimpleNamespace
 from typing import Any
 
 from blxverse import config
@@ -38,7 +40,9 @@ from blxverse.content.feed_content import (
 )
 from blxverse.content.items import CONSUMABLES_LIST, ITEM_BY_ID, ITEMS
 from blxverse.content.locations import HOMES, LOCATION_BY_ID, LOCATIONS
-from blxverse.engine import chaos, director, economy
+from blxverse.content.scenery import SCENERY, hits_scenery
+from blxverse.content.voices import identity
+from blxverse.engine import chaos, civic, conversation, director, economy
 from blxverse.engine.economy import EconomyError
 from blxverse.engine.models import (
     NPC,
@@ -88,6 +92,12 @@ def _rects() -> list[tuple[float, float, float, float]]:
 
 
 BUILDING_RECTS = _rects()
+_BUILDING_BINS = {}
+for _rect in BUILDING_RECTS:
+    _x, _y, _w, _h = _rect
+    for _bx in range(int((_x - 32) // 128), int((_x + _w + 32) // 128) + 1):
+        for _by in range(int((_y - 32) // 128), int((_y + _h + 32) // 128) + 1):
+            _BUILDING_BINS.setdefault((_bx, _by), []).append(_rect)
 
 
 def _circle_hits_rect(x: float, y: float, r: float, rect: tuple[float, float, float, float]) -> bool:
@@ -100,7 +110,11 @@ def _circle_hits_rect(x: float, y: float, r: float, rect: tuple[float, float, fl
 def walkable(x: float, y: float, r: float = config.PLAYER_RADIUS) -> bool:
     if not (30 <= x <= config.WORLD_WIDTH - 30 and 60 <= y <= config.WORLD_HEIGHT - 30):
         return False
-    return not any(_circle_hits_rect(x, y, r, rect) for rect in BUILDING_RECTS)
+    rects = _BUILDING_BINS.get((int(x // 128), int(y // 128)), ()) if r <= 32 else BUILDING_RECTS
+    for rect in rects:
+        if _circle_hits_rect(x, y, r, rect):
+            return False
+    return not hits_scenery(x, y, r)
 
 
 def nearest_walkable(x: float, y: float) -> tuple[float, float]:
@@ -141,10 +155,10 @@ def nearest_walkable(x: float, y: float) -> tuple[float, float]:
 
 NAV_CELL = 30
 _NAV: tuple[int, int, list[list[bool]]] | None = None
-_PATH_CACHE: dict[tuple[int, int, int, int], list[tuple[float, float]]] = {}
+_PATH_CACHE: dict[tuple, list[tuple[float, float]]] = {}
 
 
-def _cache_path(key: tuple[int, int, int, int], path: list[tuple[float, float]]) -> list[tuple[float, float]]:
+def _cache_path(key: tuple, path: list[tuple[float, float]]) -> list[tuple[float, float]]:
     if len(_PATH_CACHE) > 2400:
         _PATH_CACHE.clear()
     _PATH_CACHE[key] = path
@@ -163,7 +177,16 @@ def nav_grid() -> tuple[int, int, list[list[bool]]]:
     return _NAV
 
 
-def _line_clear(x1: float, y1: float, x2: float, y2: float, step: float = 6.0) -> bool:
+@lru_cache(maxsize=40000)
+def _nav_edge_clear(cx: int, cy: int, nx: int, ny: int) -> bool:
+    # Clear grid centres do not imply a clear connecting segment: small tree
+    # bases can sit between nodes. Static links are checked once and reused.
+    return _line_clear(cx*NAV_CELL+NAV_CELL/2, cy*NAV_CELL+NAV_CELL/2,
+                       nx*NAV_CELL+NAV_CELL/2, ny*NAV_CELL+NAV_CELL/2,
+                       step=5, margin=config.PLAYER_RADIUS)
+
+
+def _line_clear(x1: float, y1: float, x2: float, y2: float, step: float = 6.0, margin: float = config.PLAYER_RADIUS + 2.0) -> bool:
     """True when a body can walk the straight segment without touching a wall.
 
     Sampled every 6 px with a 2 px clearance margin. At the old 13 px / exact
@@ -171,8 +194,7 @@ def _line_clear(x1: float, y1: float, x2: float, y2: float, step: float = 6.0) -
     looked legal, the walker then bumped the corner and replanned forever.
     """
     dist = math.hypot(x2 - x1, y2 - y1)
-    n = max(1, int(dist // step))
-    margin = config.PLAYER_RADIUS + 2.0
+    n = max(1, math.ceil(dist / step))
     for i in range(1, n + 1):
         t = i / n
         if not walkable(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t, margin):
@@ -180,21 +202,40 @@ def _line_clear(x1: float, y1: float, x2: float, y2: float, step: float = 6.0) -
     return True
 
 
-def find_path(x1: float, y1: float, x2: float, y2: float) -> list[tuple[float, float]]:
+def find_path(x1: float, y1: float, x2: float, y2: float, blockers: tuple = ()) -> list[tuple[float, float]]:
     """A tiny 8-way A* over the neighborhood grid, then line-of-sight smoothing.
 
     Returns a list of waypoints ending at the destination, or [] when the
     destination is unreachable. Buildings are obstacles, so residents walk
     around them rather than through them.
     """
+    def bodies_clear(ax, ay, bx, by):
+        dx, dy = bx-ax, by-ay
+        length2 = dx*dx+dy*dy
+        for ox, oy in blockers:
+            t = max(0.0, min(1.0, ((ox-ax)*dx+(oy-ay)*dy)/(length2 or 1)))
+            if math.hypot(ox-ax-dx*t, oy-ay-dy*t) < 22.9:
+                return False
+        return True
+
+    def clear(ax, ay, bx, by, margin=config.PLAYER_RADIUS+2):
+        return _line_clear(ax, ay, bx, by, margin=margin) and bodies_clear(ax, ay, bx, by)
+
     tx, ty = nearest_walkable(x2, y2)
     if not walkable(tx, ty):
         tx, ty = 900.0, 800.0
     if math.hypot(tx - x1, ty - y1) < 1.0:
         return [(tx, ty)]
-    if _line_clear(x1, y1, tx, ty):
+    if clear(x1, y1, tx, ty):
         return [(tx, ty)]
     cols, rows, grid = nav_grid()
+    if blockers:
+        grid = [row[:] for row in grid]
+        for ox, oy in blockers:
+            for rr in range(max(0, int((oy-25)//NAV_CELL)), min(rows, int((oy+25)//NAV_CELL)+1)):
+                for cc in range(max(0, int((ox-25)//NAV_CELL)), min(cols, int((ox+25)//NAV_CELL)+1)):
+                    if math.hypot(cc*NAV_CELL+NAV_CELL/2-ox, rr*NAV_CELL+NAV_CELL/2-oy) < 25:
+                        grid[rr][cc] = False
 
     def snap(c: int, r: int) -> tuple[int, int]:
         """Nearest walkable cell to (c, r).
@@ -221,11 +262,48 @@ def find_path(x1: float, y1: float, x2: float, y2: float) -> list[tuple[float, f
                 return best[1], best[2]
         return c, r
 
-    start_cell = snap(int(x1 // NAV_CELL), int(y1 // NAV_CELL))
+    # A legal standing point can be in a thin doorstep corridor while its
+    # nearest grid centre is across a wall. Attach the actual origin to a
+    # visible node, using the physical body radius for this escape leg.
+    sc, sr = int(x1 // NAV_CELL), int(y1 // NAV_CELL)
+    start_cell = None
+    for radius in range(9):
+        candidates = []
+        for rr in range(max(0, sr-radius), min(rows, sr+radius+1)):
+            for cc in range(max(0, sc-radius), min(cols, sc+radius+1)):
+                if grid[rr][cc]:
+                    gx, gy = cc*NAV_CELL+NAV_CELL/2, rr*NAV_CELL+NAV_CELL/2
+                    candidates.append((math.hypot(gx-x1, gy-y1), cc, rr, gx, gy))
+        for _, cc, rr, gx, gy in sorted(candidates):
+            if clear(x1, y1, gx, gy, margin=config.PLAYER_RADIUS):
+                start_cell = cc, rr
+                break
+        if start_cell is not None:
+            break
+    bridge = None
+    if start_cell is None:
+        # A thin map-edge walkway has no grid centres. Walk along it first,
+        # then attach to the coarse graph; never teleport a visible actor.
+        for distance in (30, 60, 90, 120, 150):
+            for ox, oy in ((-distance, 0), (distance, 0), (0, -distance), (0, distance)):
+                bx, by = x1+ox, y1+oy
+                if not walkable(bx, by) or not clear(x1, y1, bx, by, margin=config.PLAYER_RADIUS):
+                    continue
+                cc, rr = snap(int(bx//NAV_CELL), int(by//NAV_CELL))
+                gx, gy = cc*NAV_CELL+NAV_CELL/2, rr*NAV_CELL+NAV_CELL/2
+                if clear(bx, by, gx, gy, margin=config.PLAYER_RADIUS):
+                    bridge, start_cell = (bx, by), (cc, rr)
+                    break
+            if start_cell is not None:
+                break
+    if start_cell is None:
+        return []
     goal_cell = snap(int(tx // NAV_CELL), int(ty // NAV_CELL))
-    cache_key = (start_cell[0], start_cell[1], goal_cell[0], goal_cell[1])
-    cached = _PATH_CACHE.get(cache_key)
-    if cached and _line_clear(x1, y1, cached[0][0], cached[0][1]):
+    # Two people may reserve different points in the same 30px grid cell.
+    # Caching by cells alone silently reused someone else's landing spot.
+    cache_key = (start_cell[0], start_cell[1], goal_cell[0], goal_cell[1], tx, ty)
+    cached = None if blockers else _PATH_CACHE.get(cache_key)
+    if cached and clear(x1, y1, cached[0][0], cached[0][1]):
         return list(cached)
 
     def center(c: int, r: int) -> tuple[float, float]:
@@ -256,6 +334,10 @@ def find_path(x1: float, y1: float, x2: float, y2: float) -> list[tuple[float, f
                     continue
                 if dx and dy and (not grid[cy][nx] or not grid[ny][cx]):
                     continue
+                if not _nav_edge_clear(cx, cy, nx, ny):
+                    continue
+                if blockers and not bodies_clear(*center(cx, cy), *center(nx, ny)):
+                    continue
                 step_cost = 1.4142 if dx and dy else 1.0
                 new_cost = cost[cur] + step_cost
                 nxt = (nx, ny)
@@ -277,12 +359,14 @@ def find_path(x1: float, y1: float, x2: float, y2: float) -> list[tuple[float, f
     # Smooth from the walker's *actual* position, not from its cell centre:
     # a body standing 20 px off-centre can be unable to reach a leg that looks
     # clear between two grid centres ("walks into a wall and stops").
+    if bridge is not None:
+        points.insert(0, bridge)
     points.insert(0, (x1, y1))
     out: list[tuple[float, float]] = []
     i = 0
     while i < len(points) - 1:
         j = len(points) - 1
-        while j > i + 1 and not _line_clear(points[i][0], points[i][1], points[j][0], points[j][1]):
+        while j > i + 1 and not clear(points[i][0], points[i][1], points[j][0], points[j][1]):
             j -= 1
         out.append(points[j])
         i = j
@@ -290,14 +374,20 @@ def find_path(x1: float, y1: float, x2: float, y2: float) -> list[tuple[float, f
     # Finish exactly on the requested point when the last leg can reach it.
     # Pocketed spots (a 20 px gap between two buildings is "walkable" but has
     # no way in) keep the grid centre instead of replanning forever.
-    if _line_clear(out[-1][0], out[-1][1], tx, ty):
+    if clear(out[-1][0], out[-1][1], tx, ty):
         out[-1] = (tx, ty)
-    return _cache_path(cache_key, out)
+    return out if blockers else _cache_path(cache_key, out)
 
 
 def home_xy(home_id: int) -> tuple[float, float]:
     hx, hy, _ = HOMES[home_id % len(HOMES)]
-    return hx + 46.0, hy + 88.0
+    # Building height is 74 and body radius is 16. The old +88 point
+    # overlapped the wall, and bottom-row doors were outside the map. These
+    # houses use a top entrance when there is no navigable front garden.
+    y = hy + 94.0
+    if y > config.WORLD_HEIGHT - 32:
+        y = hy - 20.0
+    return hx + 46.0, y
 
 
 def venue_spot(npc: NPC, loc_id: str) -> tuple[float, float]:
@@ -312,7 +402,7 @@ def venue_spot(npc: NPC, loc_id: str) -> tuple[float, float]:
     if loc_id == "home":
         hx, hy = home_xy(npc.home_id)
         rng = random.Random(f"{npc.id}:home")
-        return hx + rng.uniform(-26, 26), hy + rng.uniform(-6, 18)
+        return hx + rng.uniform(-12, 12), hy + rng.uniform(-3, 6)
     loc = LOCATION_BY_ID.get(loc_id)
     if not loc:
         return 900.0, 800.0
@@ -389,6 +479,9 @@ class Simulation:
         self._replans = 0
         self._npc_paths: dict[str, list[tuple[float, float]]] = {}
         self._npc_replan: dict[str, float] = {}
+        self._npc_path_goals: dict[str, tuple] = {}
+        self._npc_stalls: dict[str, float] = {}
+        self._message_jobs = {}
 
     # -- lifecycle -----------------------------------------------------
     @classmethod
@@ -453,9 +546,12 @@ class Simulation:
         sim.world_flags["pending_call"] = None
         sim.world_flags["date_offers"] = []
         sim.world_flags["ambient_host"] = None
+        civic.init(sim)
         sim._place_npcs_at_schedule()
         sim._seed_initial_life()
         sim._seed_backstory_memories()
+        if sim.player and not walkable(sim.player.x, sim.player.y):
+            sim.player.x, sim.player.y = nearest_walkable(sim.player.x, sim.player.y)
         sim.last_save_real = time.time() - 3600
         sim.save(force=True)
         return sim
@@ -506,11 +602,11 @@ class Simulation:
 
     def _seed_initial_life(self) -> None:
         welcome = (
-            f"Welcome to Bellwether Block. {len(self.npcs)} residents, one square, "
+            f"Welcome to BlaxkVille. {len(self.npcs)} residents, one square, "
             f"eleven places to be seen, and a fountain with strong opinions."
         )
         self.add_notice(kind="news", title="Welcome to BLXVERSE", body=welcome, location="square")
-        self.note("Welcome to Bellwether", "You just moved in. Walk around, say hi — the block already has a rhythm of its own.", kind="welcome")
+        self.note("Welcome to BlaxkVille", "You just moved in. Walk around, say hi — the block already has a rhythm of its own.", kind="welcome")
         self.note("Tip: click a resident to interact", "You can talk, text, call, gift and more. Press Temple to open your phone.", kind="welcome")
         awake = [n for n in self.npcs if n.spotlight]
         picks = awake[:3]
@@ -530,7 +626,7 @@ class Simulation:
             self.add_notice(
                 kind="event",
                 title={"cafe": "Two Rivers Cafe is open", "park": "Juniper Park: all are welcome",
-                       "square": "Bellwether Square notice board"}[loc],
+                       "square": "BlaxkVille Square notice board"}[loc],
                 body={"cafe": "Fresh mango cake at 10:00. The barista is taking song requests again whether you want them or not.",
                       "park": "The swings were fixed. The pigeons were not.",
                       "square": "Lantern Festival planning meeting this Sunday. Bring an opinion, leave with two."}[loc],
@@ -956,57 +1052,63 @@ class Simulation:
             npc.mood.social_energy = clamp(npc.mood.social_energy, 5, 100)
         self._separate_crowd()
 
-    def _separate_crowd(self, min_gap: float = 18.0) -> None:
-        """Keep residents at the same venue from occupying one pixel.
+    def _separate_crowd(self, min_gap: float = 24.0) -> None:
+        """Repair saved/spawned overlaps, including shared homes, before rendering.
 
-        Venue spots are deterministic per resident, but two ids can still land
-        close together; a short deterministic nudge keeps nameplates legible
-        and stops bodies from reading as a single person.
+        This is a load/placement repair, NOT a per-frame teleporting force.
+        Future arrivals reserve clear goals and walk to them normally.
         """
-        placed: dict[str, list[tuple[float, float]]] = {}
+        placed: list[tuple[float, float]] = []
         for npc in self.npcs:
-            if not npc.location_id or npc.location_id == "home":
-                continue
-            crowd = placed.setdefault(npc.location_id, [])
-            for _ in range(10):
-                clash = next(
-                    ((px, py) for px, py in crowd if math.hypot(npc.x - px, npc.y - py) < min_gap),
-                    None,
-                )
-                if clash is None:
+            ox, oy = npc.x, npc.y
+            phase = (stable_hash("spacing", npc.id) % 628) / 100
+            found = False
+            for radius in (0, 24, 40, 60, 85, 115, 150, 200, 250):
+                for k in range(1 if radius == 0 else 24):
+                    angle = phase + k * math.tau / 24
+                    x, y = ox + math.cos(angle) * radius, oy + math.sin(angle) * radius
+                    if not walkable(x, y):
+                        continue
+                    if any(math.hypot(x - px, y - py) < min_gap for px, py in placed):
+                        continue
+                    npc.x, npc.y = x, y
+                    found = True
                     break
-                base = math.atan2(npc.y - clash[1], npc.x - clash[0]) or 0.0
-                moved = False
-                for k in range(1, 8):
-                    ang = base + k * (math.pi / 3)
-                    nx = clamp(npc.x + math.cos(ang) * min_gap, 40, config.WORLD_WIDTH - 40)
-                    ny = clamp(npc.y + math.sin(ang) * min_gap * 0.8, 70, config.WORLD_HEIGHT - 40)
-                    if walkable(nx, ny):
-                        npc.x, npc.y = nx, ny
-                        moved = True
-                        break
-                if not moved:
+                if found:
                     break
-            crowd.append((npc.x, npc.y))
+            placed.append((npc.x, npc.y))
 
-    def _nudge_clear(self, npc: NPC, x: float, y: float, gap: float = 18.0) -> tuple[float, float]:
-        """Last-step spacing: don't finish a walk on top of someone else."""
+    def _indoors(self, npc: NPC) -> bool:
+        return npc.flags.get("hospital_until", 0) > self.minute or npc.status == "sleeping" or (npc.location_id == "home" and not npc.target)
+
+    def _spot_free(self, npc: NPC, x: float, y: float, gap: float = 32.0) -> bool:
         for other in self.npcs:
-            if other is npc or other.location_id != npc.location_id:
+            if other is npc or self._indoors(other):
                 continue
-            if math.hypot(other.x - x, other.y - y) >= gap:
-                continue
-            base = math.atan2(y - other.y, x - other.x) or 0.0
-            for k in range(1, 8):
-                ang = base + k * (math.pi / 3)
-                nx = clamp(x + math.cos(ang) * gap, 40, config.WORLD_WIDTH - 40)
-                ny = clamp(y + math.sin(ang) * gap * 0.8, 70, config.WORLD_HEIGHT - 40)
-                if walkable(nx, ny):
+            if math.hypot(other.x - x, other.y - y) < gap:
+                return False
+            if other.target and math.hypot(other.target['x'] - x, other.target['y'] - y) < gap:
+                return False
+        return True
+
+    def _nudge_clear(self, npc: NPC, x: float, y: float, gap: float = 32.0) -> tuple[float, float]:
+        """Reserve an uncrowded DESTINATION; never teleport a finishing walker."""
+        phase = (stable_hash("goal-space", npc.id) % 628) / 100
+        for radius in (0, 28, 44, 64, 88, 116, 150):
+            for k in range(1 if radius == 0 else 16):
+                angle = phase + k * math.tau / 16
+                nx, ny = x + math.cos(angle) * radius, y + math.sin(angle) * radius
+                if walkable(nx, ny, config.PLAYER_RADIUS + 2) and self._spot_free(npc, nx, ny, gap):
                     return nx, ny
-        return x, y
+        return nearest_walkable(x, y)
 
     def force_move(self, npc: NPC, loc_id: str) -> None:
-        x, y = self._npc_destination(npc, loc_id)
+        meeting = npc.flags.get('meeting', {})
+        if meeting.get('status') in ('travelling', 'waiting'):
+            return
+        if civic.held(self, npc) or not self.npc(npc.id):
+            return
+        x, y = self._nudge_clear(npc, *self._npc_destination(npc, loc_id))
         npc.x, npc.y = x, y
         npc.location_id = loc_id
         npc.status = "at"
@@ -1033,6 +1135,9 @@ class Simulation:
         self._last_safe = (self.player.x, self.player.y)
         self._replans = 0
         self._player_path = find_path(self.player.x, self.player.y, x, y) or [(x, y)]
+        # A solid tree may make the exact click a pocket. Publish the reachable
+        # endpoint from the outset so the marker, client and server agree.
+        self._player_dest = self._player_path[-1]
         self._dirty = True
 
     def stop_player(self) -> None:
@@ -1114,17 +1219,48 @@ class Simulation:
         drain = 0.004 * real_dt
         self.player.energy = clamp(self.player.energy - drain, 0, 100)
 
+    def _npc_route(self, npc: NPC) -> list[tuple[float, float]]:
+        if not npc.target:
+            return []
+        goal = home_xy(npc.home_id) if npc.target.get('loc') == 'home' else (npc.target['x'], npc.target['y'])
+        if self._npc_path_goals.get(npc.id) != goal or not self._npc_paths.get(npc.id):
+            if npc.target.get('loc') != 'home':
+                goal = self._nudge_clear(npc, *goal)
+            npc.target['x'], npc.target['y'] = goal
+            self._npc_paths[npc.id] = find_path(npc.x, npc.y, *goal)
+            self._npc_path_goals[npc.id] = goal
+        return self._npc_paths.get(npc.id, [])
+
+    @staticmethod
+    def npc_walk_speed(npc: NPC) -> float:
+        # A stable stride per person; not one shared animation cadence.
+        gait = 0.84 + (stable_hash("gait", npc.id) % 33) / 100
+        return config.NPC_WALK_SPEED * gait
+
     def _move_npcs(self, game_dt: float) -> None:
-        step_base = config.NPC_WALK_SPEED * game_dt
+        service_bodies = tuple(SimpleNamespace(x=a["x"],y=a["y"]) for a in self.world_flags.get("civic",{}).get("actors",[]))
         for npc in self.npcs:
-            if npc.status == "sleeping" or not npc.target:
+            if civic.held(self, npc) or npc.status == "sleeping" or not npc.target or npc.flags.get("engaged_until", 0) > self.minute:
                 continue
-            tx, ty = npc.target["x"], npc.target["y"]
-            path = self._npc_paths.get(npc.id)
+            path = self._npc_route(npc)
             if not path:
-                path = find_path(npc.x, npc.y, tx, ty) or [(tx, ty)]
-                self._npc_paths[npc.id] = path
-            budget = step_base
+                npc.target = None
+                npc.status = "at"
+                npc.flags['retry_trip_at'] = self.minute + 2
+                npc.next_decision = self.minute + 2
+                continue
+            remaining_before = math.dist((npc.x, npc.y), path[0]) + sum(math.dist(a, b) for a, b in zip(path, path[1:], strict=False))
+            budget = self.npc_walk_speed(npc) * game_dt
+            endpoint = path[-1]
+            neighbours = [o for o in self.npcs if o is not npc and not self._indoors(o)
+                          and math.hypot(o.x - npc.x, o.y - npc.y) < budget + 60]
+            neighbours.extend(o for o in service_bodies if math.hypot(o.x-npc.x,o.y-npc.y)<budget+60)
+            def clear_step(x, y, npc=npc, neighbours=neighbours):
+                if not walkable(x, y):
+                    return False
+                return all(math.hypot(o.x - x, o.y - y) >= 23 or
+                           math.hypot(o.x - x, o.y - y) > math.hypot(o.x - npc.x, o.y - npc.y) + .1
+                           for o in neighbours)
             while budget > 0 and path:
                 wx, wy = path[0]
                 dx, dy = wx - npc.x, wy - npc.y
@@ -1132,29 +1268,70 @@ class Simulation:
                 if dist <= 0.001:
                     path.pop(0)
                     continue
-                if dist <= budget:
-                    npc.x, npc.y = wx, wy
-                    path.pop(0)
-                    budget -= dist
-                    continue
-                nx, ny = npc.x + dx / dist * budget, npc.y + dy / dist * budget
-                if walkable(nx, ny):
+                step = min(dist, budget, 5.0)
+                nx, ny = npc.x + dx / dist * step, npc.y + dy / dist * step
+                if clear_step(nx, ny):
                     npc.x, npc.y = nx, ny
-                elif walkable(nx, npc.y):
-                    npc.x = nx
-                elif walkable(npc.x, ny):
-                    npc.y = ny
-                elif self.minute >= self._npc_replan.get(npc.id, 0):
-                    self._npc_replan[npc.id] = self.minute + 6
-                    self._npc_paths[npc.id] = find_path(npc.x, npc.y, tx, ty) or [(tx, ty)]
-                budget = 0
+                    budget -= step
+                    if dist <= step + .001:
+                        path.pop(0)
+                    continue
+                if not walkable(nx, ny):
+                    # Avoidance can put us off the original line of sight.
+                    # Never orbit a wall with sideways motion: replan from
+                    # the actual position instead of calling that progress.
+                    self._npc_paths.pop(npc.id, None)
+                    break
+                # Pass bodies on a consistent side while retaining forward
+                # progress. Legal clearance from the next body is enough;
+                # demanding more distance from *every* neighbour caused jams.
+                passed = False
+                for angle in (math.pi / 3, -math.pi / 3, math.pi / 2, -math.pi / 2):
+                    ux, uy = dx / dist, dy / dist
+                    sx = npc.x + (ux * math.cos(angle) - uy * math.sin(angle)) * step
+                    sy = npc.y + (uy * math.cos(angle) + ux * math.sin(angle)) * step
+                    if clear_step(sx, sy):
+                        npc.x, npc.y = sx, sy
+                        passed = True
+                        break
+                if passed:
+                    budget -= step
+                    continue
+                break
+            if npc.target.get('loc') == 'home' and math.dist((npc.x, npc.y), home_xy(npc.home_id)) < 45:
+                path.clear()
+                endpoint = (npc.x, npc.y)
             if not path:
-                npc.x, npc.y = self._nudge_clear(npc, tx, ty)
+                # A pocketed goal must end at the reachable route endpoint,
+                # never teleport across the obstacle to the requested target.
+                npc.x, npc.y = endpoint
                 npc.location_id = npc.target.get("loc", npc.location_id)
-                npc.status = "at"
+                npc.status = npc.target.get("arrival_status", "at")
                 npc.activity = npc.target.get("activity", npc.activity)
                 npc.target = None
                 self._npc_paths.pop(npc.id, None)
+                self._npc_stalls.pop(npc.id, None)
+                # All residents get another small real-world decision, not
+                # only an 18-person spotlight subset once an hour.
+                rest = 6 if npc.status == 'working' else 2.5
+                npc.next_decision = self.minute + rest + self.hub.stream(f"stroll:{npc.id}").uniform(0, 5)
+            elif remaining_before - (math.dist((npc.x, npc.y), path[0]) + sum(math.dist(a, b) for a, b in zip(path, path[1:], strict=False))) < 0.05:
+                stalled = self._npc_stalls.get(npc.id, 0) + game_dt
+                self._npc_stalls[npc.id] = stalled
+                if stalled >= 3:
+                    self._npc_paths.pop(npc.id, None)
+                    self._npc_stalls[npc.id] = 0
+                    goal = home_xy(npc.home_id) if npc.target.get('loc') == 'home' else self._nudge_clear(npc, *endpoint)
+                    npc.target['x'], npc.target['y'] = goal
+                    blockers = tuple((o.x, o.y) for o in self.npcs if o is not npc
+                        and not self._indoors(o) and math.hypot(o.x-npc.x, o.y-npc.y) < 220)
+                    blockers += tuple((o.x,o.y) for o in service_bodies if math.hypot(o.x-npc.x,o.y-npc.y)<220)
+                    detour = find_path(npc.x, npc.y, *goal, blockers=blockers)
+                    if detour:
+                        self._npc_paths[npc.id] = detour
+                        self._npc_path_goals[npc.id] = goal
+            else:
+                self._npc_stalls[npc.id] = 0
 
     def _announce_events(self) -> None:
         """Tell the player when a fixture starts; residents already drift in."""
@@ -1192,7 +1369,60 @@ class Simulation:
             return ev
         return None
 
+    def _ambient_walk(self, npc: NPC, block: dict | None) -> None:
+        """A resident is a person between appointments, not a venue marker.
+
+        Short independent walks / work movements; schedules, sleep, exhaustion
+        and conversations retain priority. Local trips retain logical venue.
+        """
+        if npc.target or self._indoors(npc) or npc.energy <= 12:
+            return
+        if npc.flags.get('on_call_with') or npc.flags.get('engaged_until', 0) > self.minute:
+            return
+        if block and block['kind'] == 'sleep':
+            return
+        if not npc.next_decision:
+            npc.next_decision = self.minute + 0.5 + (stable_hash('first-stroll', npc.id) % 550) / 100
+        if self.minute < npc.next_decision:
+            return
+        rng = self.hub.stream(f'stroll:{npc.id}')
+        working = bool(block and block['kind'] == 'work' and npc.location_id == block['loc'])
+        npc.next_decision = self.minute + (10 if working else 5) + rng.uniform(0, 8)
+        anchor = self._npc_destination(npc, npc.location_id)
+        for _ in range(10):
+            angle = rng.uniform(0, math.tau)
+            radius = rng.uniform(28, 80) if working else rng.uniform(45, 145)
+            x, y = anchor[0] + math.cos(angle) * radius, anchor[1] + math.sin(angle) * radius
+            if not walkable(x, y, config.PLAYER_RADIUS + 2) or not self._spot_free(npc, x, y):
+                continue
+            if math.hypot(npc.x - x, npc.y - y) < 32:
+                continue
+            route = find_path(npc.x, npc.y, x, y)
+            if not route or math.hypot(route[-1][0] - x, route[-1][1] - y) > 12:
+                continue
+            length, previous = 0.0, (npc.x, npc.y)
+            for point in route:
+                length += math.dist(previous, point)
+                previous = point
+            if length > 480:
+                continue
+            activity = (block or {}).get('activity', 'taking in the neighbourhood')
+            npc.target = {'x': x, 'y': y, 'loc': npc.location_id, 'activity': activity,
+                          'arrival_status': 'working' if working else 'at', 'kind': 'local_walk'}
+            npc.status = 'walking'
+            self._npc_paths[npc.id] = route
+            self._npc_path_goals[npc.id] = (x, y)
+            return
+        # No local point this time: retry shortly instead of parking forever.
+        npc.next_decision = self.minute + 5
+
     def _npc_think(self, npc: NPC) -> None:
+        if civic.held(self, npc):
+            return
+        if npc.flags.get('flee_until', 0) > self.minute:
+            return
+        if conversation.meeting_step(self, npc):
+            return
         block = self._block_for(npc, self.hour_of_day)
         if not block:
             # Between scheduled things: stay put, be awake, do nothing in
@@ -1202,24 +1432,34 @@ class Simulation:
             if npc.status in ("at", "working"):
                 npc.activity = "between things"
             npc.flags["block_key"] = "gap"
+            self._ambient_walk(npc, None)
             return
+        if not npc.target and npc.flags.get('retry_trip_at', float('inf')) <= self.minute:
+            npc.flags.pop('block_key', None)
+            npc.flags.pop('retry_trip_at', None)
         block_key = f"{block['start']}:{block['loc']}:{block['activity']}"
+        if block['kind']=='sleep' and not npc.target and (npc.location_id!='home' or npc.status!='sleeping'):
+            # A midnight birthday/story move can interrupt an existing sleep
+            # block without changing its key. Restore the commute, not a lawn
+            # statue until the next morning's schedule transition.
+            npc.flags.pop('block_key',None)
         if npc.flags.get("block_key") != block_key:
             npc.flags["block_key"] = block_key
+            npc.flags.pop('event_key', None)
+            npc.target = None
+            self._npc_paths.pop(npc.id, None)
             npc.schedule_activity = block["activity"]
             if block["kind"] == "sleep":
                 npc.status = "sleeping"
                 npc.target = None
                 self._npc_paths.pop(npc.id, None)
-                # walk home quickly by teleport only if far and nobody's watching (background sim)
+                # Walk to the actual doorstep even when off screen. Once the
+                # route finishes the resident is indoors, not a lawn statue.
                 if npc.location_id != "home":
-                    hx, hy = home_xy(npc.home_id)
-                    if math.hypot(npc.x - hx, npc.y - hy) > 700 and not npc.spotlight:
-                        npc.x, npc.y = hx, hy
-                        npc.location_id = "home"
-                    else:
-                        tx, ty = venue_spot(npc, "home")
-                        npc.target = {"x": tx, "y": ty, "loc": "home", "activity": "heading home"}
+                    tx, ty = home_xy(npc.home_id)
+                    npc.target = {"x": tx, "y": ty, "loc": "home", "activity": "sleeping",
+                                  "arrival_status": "sleeping", "kind": "enter_home"}
+                    npc.status = "walking"
                 return
             if block["kind"] == "work":
                 npc.status = "working"
@@ -1231,7 +1471,8 @@ class Simulation:
                 if npc.flags.get("banned_until", 0) > self.minute and loc == npc.flags.get("banned_from"):
                     loc = "home"
                 tx, ty = venue_spot(npc, loc)
-                npc.target = {"x": tx, "y": ty, "loc": loc, "activity": block["activity"]}
+                npc.target = {"x": tx, "y": ty, "loc": loc, "activity": block["activity"],
+                              "arrival_status": "working" if block["kind"] == "work" else "at"}
                 npc.status = "walking"
             else:
                 npc.activity = block["activity"]
@@ -1239,10 +1480,15 @@ class Simulation:
                     npc.status = "at"
         # A live fixture out-ranks idle time at home, but never work or sleep.
         ev = self._event_pull(npc)
+        attending = next((e for e in self.live_events()
+                          if npc.flags.get('event_key') == f"event:{e['id']}:{e['due']}"), None)
+        ev = attending or ev
+        if not ev and npc.flags.pop('event_key', None):
+            npc.flags.pop('block_key', None)
         if ev and block["kind"] not in ("work", "sleep"):
             key = f"event:{ev['id']}:{ev['due']}"
-            if npc.flags.get("block_key") != key:
-                npc.flags["block_key"] = key
+            if npc.flags.get("event_key") != key:
+                npc.flags["event_key"] = key
                 npc.target = {
                     "x": 0.0, "y": 0.0, "loc": ev["venue"], "activity": ev["title"],
                     "event": ev["id"],
@@ -1251,22 +1497,7 @@ class Simulation:
                 npc.target["x"], npc.target["y"] = tx, ty
                 npc.status = "walking"
 
-        # micro-decisions for foreground NPCs
-        if npc.spotlight and npc.status in ("at", "working") and npc.energy > 25:
-            if npc.next_decision == 0:
-                npc.next_decision = self.minute + self.hub.stream(f"nd:{npc.id}").uniform(18, 50)
-            if self.minute >= npc.next_decision:
-                npc.next_decision = self.minute + self.hub.stream(f"nd2:{npc.id}").uniform(30, 90)
-                rng = self.hub.stream(f"micro:{npc.id}:{int(self.minute)}")
-                if rng.random() < 0.22 and npc.location_id != "home" and npc.mood.social_energy > 30:
-                    nearby = [loc["id"] for loc in LOCATIONS
-                              if loc["id"] != npc.location_id
-                              and math.hypot(loc["x"] + loc["w"] / 2 - npc.x, loc["y"] + loc["h"] / 2 - npc.y) < 520]
-                    if nearby:
-                        loc = nearby[rng.randrange(len(nearby))]
-                        tx, ty = venue_spot(npc, loc)
-                        npc.target = {"x": tx, "y": ty, "loc": loc, "activity": "dropping by"}
-                        npc.status = "walking"
+        self._ambient_walk(npc, block)
 
     # ------------------------------------------------------------------
     # Needs
@@ -1292,7 +1523,8 @@ class Simulation:
         m.valence = clamp(m.valence + (0.008 - m.stress * 0.0004) * dt, -100, 100)
         m.irritation = clamp(m.irritation - 0.012 * dt, 0, 100)
         m.excitement = clamp(m.excitement + (1.0 if npc.location_id != "home" else -0.4) * 0.01 * dt, 0, 100)
-        if npc.energy <= 12 and npc.status not in ("sleeping",) and npc.location_id != "home":
+        if (npc.energy <= 12 and npc.status != "sleeping" and npc.location_id != "home"
+                and not (npc.target and npc.target.get("loc") == "home")):
             npc.status = "walking"
             tx, ty = venue_spot(npc, "home")
             npc.target = {"x": tx, "y": ty, "loc": "home", "activity": "exhausted, heading home"}
@@ -1301,7 +1533,7 @@ class Simulation:
     # NPC-to-NPC life
     # ------------------------------------------------------------------
     def _npc_chat(self) -> None:
-        awake = [n for n in self.npcs if n.status == "at" and n.location_id != "home" and n.mood.social_energy > 18]
+        awake = [n for n in self.npcs if n.status in ("at", "working", "walking") and not self._indoors(n) and not civic.held(self,n) and n.mood.social_energy > 18]
         by_loc: dict[str, list[NPC]] = {}
         for n in awake:
             by_loc.setdefault(n.location_id, []).append(n)
@@ -1310,7 +1542,7 @@ class Simulation:
             for i, a in enumerate(crew):
                 for b in crew[i + 1:]:
                     r = self.rel(a.id, b.id)
-                    if r.get("familiarity", 0) >= 4 and r.get("tension", 0) < 80:
+                    if math.hypot(a.x-b.x, a.y-b.y) <= 115 and r.get("familiarity", 0) >= 4 and r.get("tension", 0) < 80:
                         pairs.append((a, b, loc))
         if not pairs:
             return
@@ -1319,6 +1551,7 @@ class Simulation:
         rel_ab = self.rel(a.id, b.id)
         friendly = rel_ab.get("affinity", 0) >= 0
         topic_key = rng.choice(["music", "food", "work", "weather", "community", "sports", "gossip"])
+        civic.pair_chat(self, a, b, topic_key)
         ev = self.add_event(
             kind="npc_chat", actor=a.id, targets=[b.id], location=loc,
             facts={"topic": topic_key, "tone": "friendly" if friendly else "tense"},
@@ -1414,6 +1647,9 @@ class Simulation:
                       minute=self.minute, read=not unread, kind=kind, meta=meta or {})
         thread.messages.append(msg)
         thread.messages = thread.messages[-config.THREAD_CAP:]
+        npc = self.npc(npc_id)
+        if npc and not (meta or {}).get('conversation_turn_id'):
+            conversation.record(self, npc, reply=msg.text, medium='text', turn_id=msg.id)
         self.metrics["messages"] += 1
         self._dirty = True
         return msg
@@ -1492,7 +1728,9 @@ class Simulation:
     # ------------------------------------------------------------------
     def tick(self, real_dt: float) -> None:
         """Real-time tick driven by the server loop."""
-        self._move_player(real_dt)
+        civic.realtime(self)
+        if not civic.busy(self):
+            self._move_player(real_dt)
         if self.speed <= 0:
             return
         game_dt = min(real_dt * float(self.speed) * 1.0, 2.0)
@@ -1507,6 +1745,7 @@ class Simulation:
 
     def skip_minutes(self, minutes: float) -> list[dict]:
         """Advance the world quickly; returns notable new notices for the client."""
+        civic.end_talk(self)
         before = len(self.notices)
         self.advance(minutes)
         return self.notices[before:][-4:]
@@ -1567,14 +1806,16 @@ class Simulation:
         self._resolve_pending_calls()
         self._resolve_date_plans()
         self._deliver_pending_messages()
+        civic.step(self, dt)
 
     def _deliver_pending_messages(self) -> None:
         pending = self.world_flags.get("pending_messages", [])
         if not pending:
             return
         remaining = []
+        processing = set()
         for item in pending:
-            if self.minute < item["due"]:
+            if item["npc_id"] in processing or self.minute < item["due"]:
                 remaining.append(item)
                 continue
             npc = self.npc(item["npc_id"])
@@ -1584,10 +1825,43 @@ class Simulation:
                 item["due"] = self.minute + 240
                 remaining.append(item)
                 continue
+            processing.add(npc.id)
+            conversation.hydrate(self, npc)
+            if '_rule_reply' not in item:
+                item['_rule_reply'] = conversation.request_plan(self, npc, item['text'])
             from blxverse.engine.composer import compose_message_reply
             reply = compose_message_reply(npc=npc, player=self.player, rel=self._rel_obj(npc.id),
                                           text=item["text"], hub=self.hub, location_names=self.location_names)
-            self.send_npc_message(npc.id, reply)
+            reply = item['_rule_reply'] or conversation.offline(npc, item['text'], 'text') or reply
+            from blxverse.engine import llm
+            from blxverse.engine.composer import classify_intent
+            intent = classify_intent(item["text"])
+            job_key = item.get('id') or (npc.id, item['due'], item['text'])
+            job = self._message_jobs.get(job_key)
+            if llm.is_enabled() and not item['_rule_reply'] and intent not in ('ask_date', 'invite'):
+                if job is None:
+                    snapshot = llm.context(npc=npc, player=self.player, intent=intent,
+                        player_text=item['text'], relationship=self._rel_obj(npc.id).label(),
+                        memory=conversation.recall(npc, item['text']), venue='text message', medium='text')
+                    job = llm.submit_reply(snapshot)
+                    if job is not None:
+                        self._message_jobs[job_key] = job
+                if job is not None and not job.done():
+                    remaining.append(item)
+                    continue
+                if job is not None:
+                    try:
+                        remote_reply = job.result()
+                    except Exception:
+                        remote_reply = None
+                    if remote_reply:
+                        reply = remote_reply
+                        self.metrics['remote_llm_calls'] = self.metrics.get('remote_llm_calls', 0) + 1
+            self._message_jobs.pop(job_key, None)
+            cursors = npc.flags.setdefault("dialogue_cursors", {})
+            cursors[intent] = int(cursors.get(intent, 0)) + 1
+            turn_id = conversation.record(self, npc, item['text'], reply, 'text', item.get('turn_id'))
+            self.send_npc_message(npc.id, reply, meta={'conversation_turn_id': turn_id})
             self.adjust_rel(npc.id, "player", familiarity=1.2, affinity=0.6, trust=0.4, count_interaction=True)
             self.adjust_rel("player", npc.id, familiarity=1.2, affinity=0.6, trust=0.4)
             self.note(f"Reply from {npc.first}", reply[:140], kind="message")
@@ -1793,6 +2067,17 @@ class Simulation:
             raise SimError("Save file is not a BLXVERSE save", "bad_save", 500)
         if int(data.get("schema", -1)) != config.SCHEMA_VERSION:
             raise SimError("Save schema mismatch — start a new world or migrate", "schema_mismatch", 500)
+        # Rename authored location/story text in old saves as well as new content.
+        # IDs, wallets, relationships, and the player's own identity stay intact.
+        def rename_city(value, key=""):
+            if isinstance(value, dict):
+                return {k: rename_city(v, k) for k, v in value.items()}
+            if isinstance(value, list):
+                return [rename_city(v, key) for v in value]
+            if isinstance(value, str) and key in {"title", "summary", "body", "description", "loc_label", "evidence", "helpful"}:
+                return value.replace("Bellwether Block", "BlaxkVille").replace("Bellwether", "BlaxkVille")
+            return value
+        data = rename_city(data)
         sim = cls(seed=int(data["seed"]), save_path=path)
         sim.created_at = float(data.get("created_at", time.time()))
         sim.minute = float(data.get("minute", config.DAY_START_MINUTE))
@@ -1811,13 +2096,51 @@ class Simulation:
         sim.arcs = [_obj_from_dict(Arc, d) for d in data.get("arcs", [])]
         sim.rumors = data.get("rumors", [])
         sim.world_flags = data.get("world_flags", {})
+        if not sim.world_flags.get("blaxkville_cast_v2"):
+            from blxverse.content.names import FIRST_NAMES_F
+            from blxverse.engine.generate import apply_blaxkville_names, generate_npcs, seed_relationships
+            # Extend old 60-person saves without replacing any existing IDs,
+            # genders, memories, homes, wallets, relationships or story anchors.
+            used = {n.first for n in sim.npcs}
+            for newcomer in generate_npcs(RngHub(sim.seed)):
+                if newcomer.id in sim.by_id:
+                    continue
+                if newcomer.first in used:
+                    newcomer.first = next(name for name in FIRST_NAMES_F if name not in used)
+                used.add(newcomer.first)
+                block = sim._block_for(newcomer, sim.hour_of_day)
+                loc = block['loc'] if block else 'home'
+                newcomer.x, newcomer.y = sim._npc_destination(newcomer, loc)
+                newcomer.location_id = loc
+                newcomer.status = 'sleeping' if block and block['kind'] == 'sleep' else 'at'
+                newcomer.activity = block['activity'] if block else 'between things'
+                sim.npcs.append(newcomer)
+                sim.by_id[newcomer.id] = newcomer
+            for key, value in seed_relationships(sim.npcs).items():
+                sim.rels.setdefault(key, value)
+            apply_blaxkville_names(sim.npcs)
+            sim.world_flags["blaxkville_cast_v2"] = True
         sim.metrics = data.get("metrics", sim.metrics)
         sim.metrics.setdefault("voice_metrics", [])
         sim.world_flags.setdefault("pending_messages", [])
         # NPC transient fields
         for npc in sim.npcs:
             npc.next_decision = 0.0
+            if npc.status == "walking" and not npc.target:
+                # Older saves omitted transient targets; force a schedule
+                # decision instead of leaving the resident walking in place.
+                npc.flags.pop("block_key", None)
             npc.home_xy = home_xy(npc.home_id)
+            if sim._indoors(npc):
+                npc.x, npc.y = npc.home_xy
+            # New scenery never embeds an existing save's resident in a trunk.
+            if not walkable(npc.x, npc.y):
+                npc.x, npc.y = nearest_walkable(npc.x, npc.y)
+        civic.init(sim)
+        sim.world_flags.pop("conversation", None)
+        sim._separate_crowd()
+        if sim.player and not walkable(sim.player.x, sim.player.y):
+            sim.player.x, sim.player.y = nearest_walkable(sim.player.x, sim.player.y)
         sim.last_save_real = time.time()
         return sim
 
@@ -1836,15 +2159,21 @@ class Simulation:
         }
 
     def _npc_core(self, npc: NPC) -> dict:
+        engaged = civic.held(self, npc) or npc.flags.get("engaged_until", 0) > self.minute
+        route = [] if engaged else self._npc_route(npc)
         rel = self.rel(npc.id, "player")
         relationship = Relationship.from_dict(rel)
         return {
             "id": npc.id, "name": npc.name, "first": npc.first, "last": npc.last,
             "x": round(npc.x, 1), "y": round(npc.y, 1), "loc": npc.location_id,
-            "status": npc.status,
+            "status": npc.status, "indoors": self._indoors(npc), "engaged": engaged,
+            "meeting": npc.flags.get("meeting"),
+            "health": civic.health(npc), "combat": npc.flags.get("combat_until",0) > time.time(),
+            "route": [{"x": round(x, 1), "y": round(y, 1)} for x, y in route[:48]],
+            "walk_speed": 0 if engaged else round(self.npc_walk_speed(npc) * self.speed, 2),
             "activity": ("heading to " + self.location_names.get(npc.location_id, "somewhere"))
                         if npc.status == "walking" else npc.activity,
-            "archetype": npc.archetype,
+            "archetype": npc.archetype, "vibe": identity(npc),
             "look": npc.look, "spotlight": npc.spotlight,
             "mood": npc.mood.label(), "mood_valence": round(npc.mood.valence, 1),
             "gender": npc.gender, "occupation": npc.occupation, "age": npc.age,
@@ -1852,6 +2181,7 @@ class Simulation:
             "rel": {"label": relationship.label(), "affinity": round(rel.get("affinity", 0), 1),
                     "familiarity": round(rel.get("familiarity", 0), 1),
                     "romance": round(rel.get("romance", 0), 1),
+                    "trust": round(rel.get("trust", 0), 1), "dates": int(rel.get("dates", 0)),
                     "tension": round(rel.get("tension", 0), 1)},
         }
 
@@ -1875,6 +2205,7 @@ class Simulation:
         e2e = [m["ms"] for m in voice if m.get("stage") in ("e2e_first_audio", "end_to_first_audio")]
         return {
             "setup": False,
+            "civic": civic.payload(self),
             "clock": self.clock_payload(),
             "player": {
                 "name": p.name, "x": round(p.x, 1), "y": round(p.y, 1), "wallet": p.wallet,
@@ -1921,6 +2252,8 @@ class Simulation:
     def world_payload(self) -> dict:
         return {
             "seed": self.seed,
+            "city": "BlaxkVille",
+            "scenery": SCENERY,
             "version": config.VERSION,
             "config": {
                 "world_width": config.WORLD_WIDTH, "world_height": config.WORLD_HEIGHT,
@@ -1958,6 +2291,7 @@ class Simulation:
                        ("talk", "gift", "date", "call", "apology")][-14:]
         return {
             **npc.to_dict(include_memory=False),
+            "vibe": identity(npc), "indoors": self._indoors(npc),
             "relationship": {
                 "label": relationship.label(), "familiarity": round(rel.get("familiarity", 0), 1),
                 "trust": round(rel.get("trust", 0), 1), "affinity": round(rel.get("affinity", 0), 1),

@@ -150,7 +150,7 @@ def maybe_escalate(sim) -> dict | None:
         return None
     by_loc: dict[str, list[NPC]] = {}
     for n in sim.npcs:
-        if n.status == "sleeping" or n.location_id == "home":
+        if sim._indoors(n) or __import__("blxverse.engine.civic", fromlist=["held"]).held(sim,n):
             continue
         if n.flags.get("banned_until", 0) > sim.minute:
             continue

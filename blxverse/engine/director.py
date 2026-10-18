@@ -66,7 +66,7 @@ def _ensure_arc(sim, title: str) -> Arc:
     if arc is None:
         arc = Arc(
             id=new_id("arc"), kind="chain", title=title,
-            summary="Zara moves to Bellwether, meets Daniel, and gets caught in a false accusation that the whole block has an opinion about.",
+            summary="Zara moves to BlaxkVille, meets Daniel, and gets caught in a false accusation that the whole block has an opinion about.",
             actors=[], stages=CHAIN_STAGES, created=sim.minute, last_minute=sim.minute,
         )
         sim.arcs.append(arc)
@@ -80,7 +80,7 @@ def _chain_day0(sim, chain: dict) -> None:
         return
     chain["started"] = True
     chain["stage"] = 1
-    arc = _ensure_arc(sim, "A New Note in Bellwether")
+    arc = _ensure_arc(sim, "A New Note in BlaxkVille")
     arc.actors = [zara.id, landlord.id]
     arc.stage = 0
 
@@ -101,7 +101,7 @@ def _chain_day0(sim, chain: dict) -> None:
 
     sim.push_feed(
         author_id=zara.id,
-        text="Day one in Bellwether: my ceiling is leaking, my landlord communicates in sighs, and a pigeon watched the whole conversation. 5/10, would move again. 🎹",
+        text="Day one in BlaxkVille: my ceiling is leaking, my landlord communicates in sighs, and a pigeon watched the whole conversation. 5/10, would move again. 🎹",
         mood="tired", tag="life", loc="home",
     )
     sim.add_notice(
@@ -120,7 +120,7 @@ def _chain_day1(sim, chain: dict) -> None:
         return
     if chain.get("stage", 0) < 2:
         chain["stage"] = 2
-        arc = _ensure_arc(sim, "A New Note in Bellwether")
+        arc = _ensure_arc(sim, "A New Note in BlaxkVille")
         arc.stage = 1
         arc.last_minute = sim.minute
         arc.actors = sorted(set(arc.actors + [zara.id, daniel.id]))
@@ -161,7 +161,7 @@ def _chain_day2(sim, chain: dict) -> None:
         return
     chain["stage"] = 3
     chain["accuser"] = accuser.id
-    arc = _ensure_arc(sim, "A New Note in Bellwether")
+    arc = _ensure_arc(sim, "A New Note in BlaxkVille")
     arc.stage = 2
     arc.last_minute = sim.minute
     arc.actors = sorted(set(arc.actors + [accuser.id]))
@@ -219,7 +219,7 @@ def _chain_day3(sim, chain: dict) -> None:
     if not daniel or not accuser or not zara:
         return
     chain["stage"] = 4
-    arc = _ensure_arc(sim, "A New Note in Bellwether")
+    arc = _ensure_arc(sim, "A New Note in BlaxkVille")
     arc.stage = 3
     arc.last_minute = sim.minute
     case = next((c for c in sim.cases if c.accused == daniel.id), None)
@@ -250,7 +250,7 @@ def _chain_day3(sim, chain: dict) -> None:
     else:
         event = trigger_clash(
             sim, daniel, accuser, cause="a false accusation about a missing microphone",
-            loc_label="Bellwether Square",
+            loc_label="BlaxkVille Square",
         )
         sim.force_move(zara, "square")
         sim.remember(zara, event, importance=0.8, valence=-0.3, source="witnessed")
@@ -271,7 +271,7 @@ def _chain_day4(sim, chain: dict) -> None:
     if not daniel or not zara:
         return
     chain["stage"] = 5
-    arc = _ensure_arc(sim, "A New Note in Bellwether")
+    arc = _ensure_arc(sim, "A New Note in BlaxkVille")
     arc.stage = 4
     arc.last_minute = sim.minute
     case = next((c for c in sim.cases if c.accused == daniel.id), None)

@@ -1,0 +1,12 @@
+{
+  "version": "0.4.0",
+  "clock": "Day 4 \u00b7 Thu 11:11",
+  "player": "Ada",
+  "residents": 72,
+  "maximum_visible_actors": 19,
+  "visible_residents_moved": 13,
+  "frames": 101,
+  "window_seconds": 4,
+  "save_preserved": true,
+  "errors": []
+}

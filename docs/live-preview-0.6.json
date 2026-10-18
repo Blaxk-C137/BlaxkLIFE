@@ -1,0 +1,10 @@
+{
+  "result": "PASS",
+  "version": "0.6.0",
+  "port": 8111,
+  "player": "Ada",
+  "clock": "Day 6 \u00b7 Sat 09:58",
+  "living_residents": 72,
+  "errors": [],
+  "note": "Original live world, not a staged conversation fixture. Gemini network tests are mocked; no key supplied to this workspace."
+}

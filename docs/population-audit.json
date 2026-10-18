@@ -1,0 +1,73 @@
+{
+  "result": "PASS",
+  "window_game_minutes": 30,
+  "samples_per_scenario": 120,
+  "scenarios": [
+    {
+      "scenario": "fresh morning",
+      "residents": 72,
+      "initial_outdoors_eligible": 57,
+      "moved_over_8px": 71,
+      "eligible_moved": 57,
+      "non_spotlight_moved": 53,
+      "ending_indoors": 1,
+      "peak_walkers": 39,
+      "close_pair_frames_under_22px": 0,
+      "blocked_position_frames": 0,
+      "simulation_seconds_for_30_game_minutes": 2.115
+    },
+    {
+      "scenario": "settled weekday mid-block",
+      "residents": 72,
+      "initial_outdoors_eligible": 71,
+      "moved_over_8px": 71,
+      "eligible_moved": 71,
+      "non_spotlight_moved": 54,
+      "ending_indoors": 1,
+      "peak_walkers": 33,
+      "close_pair_frames_under_22px": 0,
+      "blocked_position_frames": 0,
+      "simulation_seconds_for_30_game_minutes": 1.749
+    },
+    {
+      "scenario": "asleep indoors",
+      "residents": 72,
+      "initial_outdoors_eligible": 0,
+      "moved_over_8px": 0,
+      "eligible_moved": 0,
+      "non_spotlight_moved": 0,
+      "ending_indoors": 72,
+      "peak_walkers": 0,
+      "close_pair_frames_under_22px": 0,
+      "blocked_position_frames": 0,
+      "simulation_seconds_for_30_game_minutes": 0.233
+    },
+    {
+      "scenario": "next-day morning departure",
+      "residents": 72,
+      "initial_outdoors_eligible": 57,
+      "moved_over_8px": 71,
+      "eligible_moved": 57,
+      "non_spotlight_moved": 53,
+      "ending_indoors": 1,
+      "peak_walkers": 44,
+      "close_pair_frames_under_22px": 0,
+      "blocked_position_frames": 0,
+      "simulation_seconds_for_30_game_minutes": 1.538
+    },
+    {
+      "scenario": "copy of saved world, no reset",
+      "residents": 72,
+      "initial_outdoors_eligible": 4,
+      "moved_over_8px": 4,
+      "eligible_moved": 4,
+      "non_spotlight_moved": 4,
+      "ending_indoors": 69,
+      "peak_walkers": 4,
+      "close_pair_frames_under_22px": 0,
+      "blocked_position_frames": 0,
+      "simulation_seconds_for_30_game_minutes": 0.357
+    }
+  ],
+  "note": "Homes/sleepers are intentionally stationary indoors; outdoor residents keep schedules offscreen. Live save never modified."
+}

@@ -239,3 +239,81 @@ on the item id. The reply quotes the reasons it landed the way it did.
 - Players can read why a gift worked, which makes the next choice informed.
 - Balance lives in one function (`compose_gift_reaction`) with thresholds
   documented in the payload.
+
+
+---
+
+## ADR-0014 — CPU-only Render hosting keeps one authoritative process
+
+**Context.** The game needs to run on Render CPU instances. The server already
+uses the Python standard library and the browser draws the world; there is no
+local neural model or GPU dependency. However, it did not read `PORT`, and local
+save paths would be ephemeral on a hosted service.
+
+**Decision.** Ship a native Python Blueprint, one Starter instance, and a disk
+mounted at `/var/data`; store both save and audit data beneath it. Use a single
+bounded-thread server, not multiple worker processes. Add a generated shared
+HTTP Basic password (health checks exempt), idle socket deadlines, and graceful
+shutdown that drains handlers before the final save. Retain optional external
+LLM phrasing but disable it by default in the hosting configuration.
+
+**Consequences.**
+- No GPU cost, dependency-heavy serving stack, frontend rewrite, or database is
+  necessary for a private single-player deployment.
+- Durable hosting has service + disk costs; free ephemeral demos are explicitly
+  documented as nondurable.
+- The hosted game still shares one world/player across authenticated visitors.
+  Multi-account isolation, horizontal scaling, and adversarial public-internet
+  load hardening are separate future work, not claimed by this patch.
+- Local deployment tests prove environment and persistence contracts, not a
+  completed external deployment or performance on a particular Render plan.
+
+
+---
+
+## ADR-0015 — Poll world state, never replace an active composer
+
+**Context.** A full phone re-render on every poll destroyed native keyboard focus
+and in-progress texts/posts. Saving a value and refocusing after replacement
+would still flicker the software keyboard and disrupt selection/IME input.
+
+**Decision.** Keep composer nodes mounted. Update message content separately;
+make other phone refreshes deliberate. Store drafts for explicit tab changes,
+retain them on errors, and discard async tab responses targeting detached nodes.
+Use a visual-viewport-height layout and scroll only the message list.
+
+**Consequences.** Incoming messages remain live without keyboard interruption.
+Gist Hub gets an explicit refresh button, not silent background content churn.
+
+---
+
+## ADR-0016 — Buffered authoritative NPC routes, shared solid scenery
+
+**Context.** Easing to a sparse snapshot made all NPCs lurch and stop together.
+Static tree art also forced actors to be painted over foliage.
+
+**Decision.** Publish NPC routes and individualized speeds. Play route segments
+in a small client jitter buffer; extrapolate only briefly along known paths.
+Publish shared scenery definitions with solid trunks/bush bases; draw only their
+shadows in the ground layer and Y-sort the upright props with actors.
+
+**Consequences.** Frame-continuous, obstacle-respecting movement and correct
+occlusion, at the cost of ~800 ms NPC visual delay. The authoritative interaction
+range and the 30 px navigation-grid caveat remain documented.
+
+---
+
+## ADR-0017 — A large offline character-voice deck, not a million-line file
+
+**Context.** Repeated dialogue made residents feel interchangeable; synchronous
+remote-model phrasing would add latency/cost and a network dependency.
+
+**Decision.** Compose authored intent beats, style-specific openings, factual
+personal asides and follow-ups with resident/intent-seeded decks and persistent
+cursors. Named personas, hobbies, values and goals define the voice. Keep actual
+questions grounded and consent/outcome lines outside generic variation.
+
+**Consequences.** Over a million nominal slots per resident with no GPU, model
+API, giant text download or runtime dependency. This is explicitly compositional
+variation, not a million authored narratives. Audit sampled 1,200 distinct actual
+greetings for EVERY resident; repeated fragments and limited reasoning remain.

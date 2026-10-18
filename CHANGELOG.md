@@ -2,6 +2,88 @@
 
 All notable changes to this project. Dates are local build dates.
 
+## [0.4.0] — 2026-10-17
+
+### Resident life, One UI-inspired phone and relationship practice
+- Culling hides out-of-frame/distant residents, with a soft approach fade, without
+  deleting their schedules, messages or relationships. Hidden actors are not hit targets.
+- Residents enter homes at their doorsteps and remain indoors through sleep/home
+  downtime. Morning departures restore visibility; no outdoor sleeping piles.
+- Whole-cast local walks, staggered rests, clear reserved destinations, 5px movement
+  substeps, body clearance, consistent passing and stalled/failed trip recovery.
+- Static building broadphase accelerates exact collision checks; geometry unchanged.
+  Precise route-cache keys prevent different goals in one grid cell sharing an endpoint.
+  Stalls trigger body-aware detours; physically reachable home entrances and narrow
+  boundary-grid bridges prevent wall orbits and overnight doorstep queues.
+- One UI-inspired phone, punch-hole status bar, message bubbles, responsive composer,
+  gesture close and Connections guide. Existing drafts and polling protections retained.
+- Native server-side Gemini text generation for chats, queued texts and call turns.
+  Remote requests leave the world lock free; bounded text workers and local fallback.
+  Keys remain in environment variables; browser speech may use vendor cloud services.
+- Quiet original procedural music; gesture unlock, persistent mute, call/speech ducking.
+- Cast increased to 72 adults with 12 additional women. Added Zayyan/Bashir/Dominion,
+  Khadija/Rahma/Nneka/Uchechi/Chinaza/Tomi/Damilola/Hauwa/Maryam/Simi/Teni/Bisola
+  and other featured names. Older saves extend without resetting existing identities.
+- Added conversation notes and mutual-interest milestones. Typed flirting/date requests
+  now share quick-button consent rules; rejected flirting does not grant romance.
+- Added population, Gemini-contract, slow-provider integration and collision regressions;
+  extended responsive/music checks. See docs/BLAXKVILLE_0.4.md for measured evidence.
+- Release gate: all 106 tests passed, including six-day story simulation and original
+  overnight sleep assertion; lint/compile/JavaScript checks passed. Six viewport
+  sizes, phone/music, population, slow-provider and CPU/save-restart audits passed.
+
+## [0.3.0] — 2026-10-17
+
+### BlaxkVille: phone, movement and mobile repair pass
+- Reproduced composer focus/draft loss; removed full phone refresh on world polls.
+  Conversations patch messages in place, drafts survive tab navigation, failed
+  sends keep text, and duplicate taps/stale tab responses are guarded.
+- NPCs publish authoritative paths and individual speeds; the renderer uses
+  buffered route playback instead of easing synchronously to each poll. Added
+  corner/continuous-motion Node regressions and an actual frame-sampling gate.
+- Corrected stale resident path targets, pocket-endpoint teleporting, and walking
+  home into sleep. Commute destinations persist/recover across a restart. Reachable player endpoints are published consistently.
+- Added 74 shared scenery props with solid bases and correct actor/foliage depth.
+  Improved articulated sprites, clothing silhouettes, footwear and accessories.
+- Notifications, story banners and the location chip are clickable to dismiss
+  and expire after five seconds. Same-stage polls do not re-pin them.
+- Renamed the city BlaxkVille without changing 1900 × 1300 dimensions. Added the
+  requested names plus more, preserving Zara/Daniel/Femi and resident IDs.
+- Added per-character offline voice decks with saved cursors and curated named
+  personas. Audit: 1,200 different greetings for each of 60 residents (72,000
+  sampled); 1,152,000 nominal compositional slots per resident, NOT a million
+  independently authored conversations. Consent/state answers stay authoritative.
+- Responsive phone/modal/header layouts, safe wrapping, 16 px text inputs,
+  dynamic visual viewport sizing and native keyboard focus. Six viewport sizes
+  plus a keyboard-height emulation pass. No physical-device/full-a11y claim.
+- Added isolated Playwright UX gate and dialogue audit, ten unit regressions,
+  and an autouse isolated test data directory. Save export now takes a current
+  locked backup rather than racing autosave rotation.
+- Render CPU/auth/restart probe still passes; latest 30 s local run: 4.7% of one
+  core, 28.45 MiB sampled RSS. No external Render deployment performed.
+
+## [0.2.1] — 2026-10-17
+
+### Render CPU deployment
+- Added a Render Blueprint with one paid Starter Python service, a 1 GB save
+  disk, `/api/health`, and a generated HTTP Basic browser password.
+- Honor Render's `PORT`, retaining local port overrides; select Python 3.13 and
+  ship a dependency-free `requirements.txt` for the platform's pip build step.
+- Graceful SIGTERM stops ticking, drains HTTP handlers, and forces a final save.
+  Startup checks data-directory writability; ticks use monotonic time and look
+  up the current world under the mutation lock.
+- Cap HTTP handlers at 32, time out idle sockets after 15 seconds, reject
+  unauthenticated requests before reading bodies, and confine static symlinks.
+- Added five deployment regressions and `scripts/render_check.py`: isolated
+  PORT-only boot, private game/public health, 60 NPCs at 4×, SIGTERM/restart and
+  persisted identity/clock/speed. Local 30-second probe: 4% of one CPU core,
+  28.35 MiB sampled peak RSS (not a Render hardware benchmark).
+- Authenticated Chromium check passed: page, modules, polling, Calendar; no
+  page errors or HTTP failures. Movement probe passed after correcting its
+  direct-script import path.
+- Added `docs/RENDER.md`; corrected environment-variable and `.env` documentation.
+  No external deployment, billing action, or remote push performed.
+
 ## [0.2.0] — 2026-10-17
 
 Movement, gifting and the calendar rebuilt from player reports. Everything here

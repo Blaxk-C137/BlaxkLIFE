@@ -1,0 +1,11 @@
+{
+  "result": "PASS",
+  "checks": [
+    "real talk panel acquires lease; world clock advances, NPC stays; Escape releases movement",
+    "server-staged casual overhead bubbles wait, follow actors, and expire; autonomous pairing separately unit-tested",
+    "all five civic facilities open; persisted injured patient, permanent memorial and abstract businesses render",
+    "actual work action dims immediately; Escape cannot bypass; movement/purchases blocked by server; unlocks after five-second finishing lock"
+  ],
+  "errors": [],
+  "note": "Isolated synthetic world in Chromium. Live save not changed; no live Google API key or physical-device audit."
+}

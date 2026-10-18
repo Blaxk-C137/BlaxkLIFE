@@ -1,0 +1,24 @@
+{
+  "result": "PASS",
+  "python": "3.13.16",
+  "duration_seconds": 30.09,
+  "speed": 4,
+  "state_requests": 119,
+  "state_latency_p50_ms": 5.2,
+  "state_latency_p95_ms": 60.17,
+  "cpu_percent_one_core": 12.66,
+  "rss_peak_mib": 32.83,
+  "checks": [
+    "PORT-only boot",
+    "0.0.0.0 bind",
+    "public health",
+    "private game",
+    "static assets",
+    "72 NPCs at 4x",
+    "SIGTERM exit 0",
+    "same-disk restart",
+    "saved player/clock/speed",
+    "calendar and export"
+  ],
+  "note": "Local sandbox measurement, not a benchmark on Render hardware."
+}

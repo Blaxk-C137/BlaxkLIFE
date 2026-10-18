@@ -1,0 +1,19 @@
+{
+  "result": "PASS",
+  "cast_size": 72,
+  "identity_fields_preserved": [
+    "id",
+    "first",
+    "last",
+    "name",
+    "gender",
+    "pronouns"
+  ],
+  "gender_counts": {
+    "female": 42,
+    "male": 27,
+    "nonbinary": 3
+  },
+  "player_preserved": true,
+  "note": "Original Ada save and all identities compared with the pre-0.6 backup; no reset or cast replacement."
+}

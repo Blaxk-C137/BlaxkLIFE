@@ -115,7 +115,7 @@ POST_BY_LOCATION = {
     "clothing": "Neon Threads. The mirror has seen me try four jackets. It's keeping notes.",
     "music_store": "Vinyl Corner. The cat has opinions and I'm taking them personally.",
     "salon": "The Glow Room. Someone's haircut is good and it's mine. 💇",
-    "square": "Bellwether Square. Best place to sit and invent stories about people who are just buying fruit.",
+    "square": "BlaxkVille Square. Best place to sit and invent stories about people who are just buying fruit.",
 }
 
 COMMENT_TEMPLATES = [

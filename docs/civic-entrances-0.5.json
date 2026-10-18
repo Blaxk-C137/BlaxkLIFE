@@ -1,0 +1,39 @@
+{
+  "result": "PASS",
+  "map_dimensions": [
+    1900,
+    1300
+  ],
+  "checks": [
+    {
+      "site": "barracks",
+      "waypoints": 10,
+      "reachable_entrance": true,
+      "wall_safe_segments": true
+    },
+    {
+      "site": "black_market",
+      "waypoints": 10,
+      "reachable_entrance": true,
+      "wall_safe_segments": true
+    },
+    {
+      "site": "graveyard",
+      "waypoints": 10,
+      "reachable_entrance": true,
+      "wall_safe_segments": true
+    },
+    {
+      "site": "hospital",
+      "waypoints": 7,
+      "reachable_entrance": true,
+      "wall_safe_segments": true
+    },
+    {
+      "site": "police",
+      "waypoints": 10,
+      "reachable_entrance": true,
+      "wall_safe_segments": true
+    }
+  ]
+}

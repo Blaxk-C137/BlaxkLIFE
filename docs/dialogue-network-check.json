@@ -1,0 +1,11 @@
+{
+  "result": "PASS",
+  "checks": [
+    "slow chat provider does not block polling or clock",
+    "slow call provider does not block polling or clock",
+    "remote reply delivered to text thread",
+    "server strips private dialogue context"
+  ],
+  "max_state_latency_ms": 18.17,
+  "note": "Local mocked provider. Not a live Gemini API test."
+}

@@ -16,12 +16,13 @@ Design rules enforced here:
 from __future__ import annotations
 
 import math
+import time
 from typing import Any
 
 from blxverse import config
 from blxverse.content.items import CONSUMABLES, buyable
 from blxverse.content.locations import LOCATION_BY_ID
-from blxverse.engine import llm
+from blxverse.engine import civic, conversation, llm
 from blxverse.engine.composer import (
     classify_intent,
     compose_gift_reaction,
@@ -85,6 +86,8 @@ def _require_near_npc(sim, npc, radius: float | None = None) -> None:
         raise SimError("That resident doesn't exist.", "not_found", 404)
     if npc.status == "sleeping":
         raise SimError(f"{npc.first} is asleep. Even this neighborhood has limits.", "asleep", 422)
+    if sim._indoors(npc):
+        raise SimError(f"{npc.first} is indoors at home. Try a text or a call instead.", "indoors", 422)
     if npc.flags.get("banned_from") and npc.location_id == "home":
         raise SimError(f"{npc.first} is lying low after some cartoon nonsense. Try later.", "unavailable", 422)
     if _dist_to_npc(sim, npc) > (radius or config.TALK_RADIUS + 25):
@@ -270,6 +273,8 @@ def act_talk(sim, action: dict) -> dict:
     _require_near_npc(sim, npc)
     text = _sanitize(action.get("text"))
     intent = classify_intent(text) or "smalltalk"
+    if intent in ('ask_date', 'flirt', 'apology', 'invite', 'gossip'):
+        return act_intent(sim, {'npc_id': npc.id, 'intent': intent, 'text': text})
     return _converse(sim, npc, text, intent, medium="talk", player=p)
 
 
@@ -282,7 +287,7 @@ def act_intent(sim, action: dict) -> dict:
     intent = str(action.get("intent", "greet"))
     if intent not in QUICK_TEXT:
         raise SimError("Unknown conversation move.", "bad_request")
-    text = QUICK_TEXT[intent]
+    text = _sanitize(action["text"]) if action.get("text") else QUICK_TEXT[intent]
     forced = None
 
     if intent == "ask_date":
@@ -377,12 +382,34 @@ def act_intent(sim, action: dict) -> dict:
 
 def _converse(sim, npc, text: str, intent: str, *, medium: str, player,
               forced=None, context: str | None = None) -> dict:
+    conversation.hydrate(sim, npc)
+    meeting = npc.flags.get('meeting', {})
+    if medium == 'talk' and meeting.get('status') == 'waiting':
+        meeting['status'] = 'met'
+        npc.flags.pop('block_key', None)
+    rule = conversation.request_plan(sim, npc, text) if not forced else None
+    if rule:
+        forced = [rule]
+    elif intent == 'invite' and not forced:
+        forced = ["Where and when should we meet? Give me a place and time so we can actually arrange it."]
     rel = sim._rel_obj(npc.id)
+    if medium == 'talk':
+        if not civic.engaged(sim, npc):
+            civic.begin_talk(sim, npc)
+        npc.flags['engaged_until'] = sim.minute + 12
     result = compose_reply(
         npc=npc, player=player, rel=rel, text=text, intent=intent, hub=sim.hub,
         location_names=sim.location_names, forced_lines=forced, context_hook=context,
     )
+    npc.flags.setdefault("dialogue_cursors", {})[intent] = result["dialogue_cursor"]
+    local = conversation.offline(npc, text, medium) if not forced else None
+    if local:
+        result['text'] = local
     effects = result["effects"]
+    # Hearing a refusal is not a way to farm attraction. Both typed and quick
+    # flirting use the same pre-conversation eligibility checks.
+    if (intent == 'flirt' and not _flirt_eligible(sim, npc)[0]) or (intent == 'ask_date' and not _date_eligible(sim, npc)[0]):
+        effects['romance'] = 0
     # Calls are a little less intimate per turn; texts least of all.
     scale = {"talk": 1.0, "call": 0.65, "text": 0.55}.get(medium, 1.0)
     if scale != 1.0:
@@ -397,22 +424,20 @@ def _converse(sim, npc, text: str, intent: str, *, medium: str, player,
                        tension=effects.get("tension", 0) * 0.5, conflicts=1)
         sim.metrics["conflicts"] = sim.metrics.get("conflicts", 0) + 1
 
-    # Optional selective LLM: only the phrasing of a foreground line. If it is
-    # unavailable or slow, the deterministic composer's line stands.
-    if medium == "talk":
-        contextual = llm.generate_reply(
-            npc=npc, player=player, intent=intent, player_text=text,
-            relationship=_rel_payload(sim, npc.id).get("label", "acquaintance"),
-            memory=npc.memory[-1].summary if npc.memory else "",
-            venue=sim.location_names.get(npc.location_id, "the block"),
-        )
-        if contextual:
-            result["text"] = contextual
-            sim.metrics["remote_llm_calls"] = sim.metrics.get("remote_llm_calls", 0) + 1
-            meta = llm.generate_reply.last_call or {}
-            sim.metrics["llm_spend_usd"] = round(
-                sim.metrics.get("llm_spend_usd", 0.0) + float(meta.get("cost_usd", 0.0)), 6)
-            sim.log_metric("llm_reply", {"npc": npc.id, **(meta or {})})
+    left = medium == 'talk' and (sim.rel(npc.id, 'player').get('tension', 0) >= 75 or npc.mood.irritation >= 70 or npc.mood.stress >= 90)
+    if left:
+        result['text'] = "No. I need some space. We are done talking for now."
+        civic.end_talk(sim, npc_id=npc.id, reason='leave')
+        civic.speak(sim, npc, "I need some space.", kind='conflict')
+    elif medium == 'talk' and intent == 'goodbye':
+        civic.end_talk(sim, npc_id=npc.id)
+    remote = None
+    # Forced consent/date/rule answers are authoritative, never AI-rephrased.
+    if not left and not forced and intent not in ('ask_date', 'invite', 'goodbye') and llm.is_enabled():
+        remote = llm.context(npc=npc, player=player, intent=intent, player_text=text,
+            relationship=_rel_payload(sim, npc.id).get('label', 'acquaintance'),
+            memory=conversation.recall(npc, text), medium=medium,
+            venue=sim.location_names.get(npc.location_id, 'the block'))
 
     summary = f"You {QUICK_LABELS.get(intent, 'talked with')} {npc.first}."
     _record_talk(sim, npc, intent, summary,
@@ -436,13 +461,15 @@ def _converse(sim, npc, text: str, intent: str, *, medium: str, player,
                                f"{sim.location_names.get(npc.location_id, 'the block')}.",
                 }, importance=0.12, valence=0.1, source="witnessed")
 
+    turn_id = conversation.record(sim, npc, text, result['text'], medium)
     return {
         "ok": True, "reply": result["text"], "intent": intent,
+        "turn_id": turn_id, "npc_id": npc.id, "conversation_ended": bool(left or intent == 'goodbye'),
         "effects": effects, "effects_display": _effect_lines(effects),
         "npc": {"id": npc.id, "name": npc.name, "first": npc.first, "look": npc.look,
                 "mood": npc.mood.label(), "voice": npc.voice},
         "relationship": _rel_payload(sim, npc.id),
-        "heard_rumor": False,
+        "heard_rumor": False, "_remote_dialogue": remote,
     }
 
 
@@ -565,6 +592,8 @@ def act_activity(sim, action: dict) -> dict:
     activity = next((a for a in loc["activities"] if a["id"] == action.get("activity_id")), None)
     if activity is None:
         raise SimError("That activity isn't available here.", "not_found", 404)
+    if activity.get("civic_op"):
+        return civic.action(sim,{"op":activity["civic_op"]})
     p = _player(sim)
     cost = int(activity.get("cost", 0))
     if cost:
@@ -606,7 +635,9 @@ def act_work(sim, action: dict) -> dict:
     sim.player_memory(f"Worked a shift at {loc['name']} and earned {pay} BLX.", kind="work", valence=0.3)
     sim.add_event(kind="shift", actor="player", targets=[], location=loc["id"], facts={"pay": pay},
                   witnesses=[], visibility="public", summary=f"You worked a shift at {loc['name']}.")
+    sim.stop_player()
     skipped = sim.skip_minutes(config.SHIFT_HOURS * 60)
+    p.flags["busy"] = {"kind":"work", "label":f"Finishing your shift at {loc['name']}", "until":time.time()+5}
     return {"ok": True, "pay": pay, "wallet": p.wallet, "energy": round(p.energy, 1),
             "text": f"You worked a {config.SHIFT_HOURS}-hour shift and earned {pay} BLX.",
             "notices": skipped, "clock": sim.clock_payload()}
@@ -704,6 +735,7 @@ def act_message(sim, action: dict) -> dict:
     thread.messages.append(Message(id=new_id("msg"), sender="player", text=text, minute=sim.minute,
                                    read=True, kind="text"))
     thread.messages = thread.messages[-60:]
+    turn_id = conversation.record(sim, npc, text, medium='text', turn_id=thread.messages[-1].id)
     sim.player_memory(f"Texted {npc.first}: \"{text[:90]}\"", kind="message", valence=0.1)
     delay = config.MESSAGE_REPLY_MIN_DELAY + sim.hub.stream(f"msgdelay:{npc.id}").random() * (
         config.MESSAGE_REPLY_MAX_DELAY - config.MESSAGE_REPLY_MIN_DELAY)
@@ -711,7 +743,7 @@ def act_message(sim, action: dict) -> dict:
         delay += 240
     queue = sim.world_flags.setdefault("pending_messages", [])
     queue.append({"id": new_id("pending"), "npc_id": npc.id, "text": text,
-                  "due": sim.minute + delay})
+                  "due": sim.minute + delay, "turn_id": turn_id})
     sim.world_flags["pending_messages"] = queue[-30:]
     return {"ok": True, "scheduled": True,
             "text": f"Message sent. {npc.first} will reply in a few minutes of game time."}
@@ -767,16 +799,16 @@ def act_call_turn(sim, action: dict) -> dict:
     text = _sanitize(action.get("text"))
     intent = classify_intent(text) or "smalltalk"
     p = _player(sim)
-    result = compose_reply(npc=npc, player=p, rel=sim._rel_obj(npc.id), text=text, intent=intent,
-                           hub=sim.hub, location_names=sim.location_names)
-    effects = {k: round(v * 0.55, 2) for k, v in result["effects"].items()}
-    _apply_effects(sim, npc, effects)
-    call["turns"] = int(call.get("turns", 0)) + 1
-    sim.metrics["call_turns"] = sim.metrics.get("call_turns", 0) + 1
-    sim.player_memory(f"On a call with {npc.first}: \"{result['text'][:90]}\"", kind="call", valence=0.2)
-    return {"ok": True, "reply": result["text"], "intent": intent, "turns": call["turns"],
-            "effects_display": _effect_lines(effects), "npc_id": npc.id,
-            "relationship": _rel_payload(sim, npc.id)}
+    forced = None
+    if intent == 'ask_date':
+        forced = ["Let's talk about making that plan when we see each other in person."]
+    elif intent == 'flirt' and not _flirt_eligible(sim, npc)[0]:
+        forced = ["Let's slow down. I'd rather get to know you first."]
+    result = _converse(sim, npc, text, intent, medium='call', player=p, forced=forced)
+    call['turns'] = int(call.get('turns', 0)) + 1
+    sim.metrics['call_turns'] = sim.metrics.get('call_turns', 0) + 1
+    result['turns'] = call['turns']
+    return result
 
 
 def act_call_end(sim, action: dict) -> dict:
@@ -1016,16 +1048,16 @@ def act_start_business(sim, action: dict) -> dict:
     p.flags["cart_opened"] = sim.day_number
     p.occupation = "street vendor"
     p.reputation = clamp(p.reputation + 4, 0, 100)
-    sim.player_memory("Opened a street cart at Bellwether Square.", kind="business", valence=0.9)
+    sim.player_memory("Opened a street cart at BlaxkVille Square.", kind="business", valence=0.9)
     ev = sim.add_event(kind="business", actor="player", targets=[], location="square",
                        facts={"cost": config.STREET_CART_COST}, witnesses=[], visibility="public",
-                       summary="You set up a street cart at Bellwether Square.")
+                       summary="You set up a street cart at BlaxkVille Square.")
     for npc in sim.npcs:
         if npc.location_id == "square" and npc.status != "sleeping":
             sim.remember(npc, ev, importance=0.3, valence=0.4, source="witnessed")
     sim.push_feed(author_id="player", text="So I run a cart at the square now. Come by. I'll pretend not to be nervous. 🛒",
                   mood="hopeful", tag="business", loc="square")
-    sim.note("Cart open", "Your cart is at Bellwether Square. It earns a little every day at 18:00.", kind="story")
+    sim.note("Cart open", "Your cart is at BlaxkVille Square. It earns a little every day at 18:00.", kind="story")
     return {"ok": True, "text": f"You set up a street cart for {config.STREET_CART_COST} BLX. "
                                 "It'll earn daily income at 18:00.", "wallet": p.wallet}
 
@@ -1081,7 +1113,26 @@ def act_journal(sim, action: dict) -> dict:
     return {"ok": True, "journal": list(reversed(p.flags.get("journal", [])[-60:]))}
 
 
+def act_talk_begin(sim, action):
+    npc = _npc(sim, action.get('npc_id'))
+    _require_near_npc(sim, npc)
+    lease = civic.begin_talk(sim, npc, action.get('session_id'))
+    if not action.get('session_id'):
+        conversation.hydrate(sim, npc)
+        lease['history'] = npc.flags['conversation_history'][-8:]
+    return lease
+
+
+def act_talk_end(sim, action):
+    ended = civic.end_talk(sim, session_id=action.get('session_id'), npc_id=action.get('npc_id'))
+    return {'ok': True, 'ended': ended}
+
+
 ACTIONS = {
+    'talk_begin': act_talk_begin,
+    'talk_keepalive': act_talk_begin,
+    'talk_end': act_talk_end,
+    'civic': civic.action,
     "move": act_move,
     "stop": act_stop,
     "speed": act_speed,
@@ -1115,11 +1166,30 @@ ACTIONS = {
 
 def handle_action(sim, action: dict) -> dict:
     kind = str(action.get("type", "")).strip()
+    if civic.busy(sim) and kind not in ('talk_end', 'dismiss_notifications'):
+        raise SimError('Your shift is still finishing. Wait a few seconds.', 'busy', 423)
+    if kind in ('move', 'work', 'sleep', 'call_start'):
+        civic.end_talk(sim)
     handler = ACTIONS.get(kind)
     if handler is None:
         raise SimError(f"Unknown action '{kind}'.", "bad_action", 404)
     payload = {k: v for k, v in action.items() if k != "type"}
     result = handler(sim, payload)
     result.setdefault("ok", True)
+    if kind in ('talk', 'intent', 'call_turn'):
+        intent = result.get('intent', '')
+        if result.get('accepted') is False:
+            result['coaching'] = 'They declined. Accept it without arguing; give them space rather than repeating the same request.'
+        elif result.get('accepted') and intent == 'ask_date':
+            result['coaching'] = 'You both agreed to a date. Check your calendar, make time, and show up.'
+        else:
+            result['coaching'] = {
+                'compliment': 'Keep compliments specific and sincere. Follow up with curiosity, not a string of praise.',
+                'flirt': 'Pay attention to whether the warmth is mutual. Give them room to set the pace.',
+                'deep': 'Make space for their answer, and share a little about yourself too.',
+                'insult': 'Disrespect damages trust. If you crossed a line, own it without demanding forgiveness.',
+                'apology': 'An apology is a start. Changed behaviour matters more than saying it repeatedly.',
+                'gossip': 'Rumours are not facts. Respect privacy and check claims before repeating them.',
+            }.get(intent, 'Listen for one thing in their reply and ask a genuine follow-up. Conversation works both ways.')
     result["action"] = kind
     return result

@@ -1,0 +1,33 @@
+{
+  "result": "PASS",
+  "port": 8111,
+  "version": {
+    "ok": true,
+    "version": "0.5.0",
+    "world": true,
+    "time": 1792301284.4380124,
+    "llm": {
+      "enabled": false,
+      "provider": "openai-compatible",
+      "model": "gpt-4o-mini",
+      "base_url": "https://api.openai.com/v1",
+      "mode": "deterministic composer"
+    }
+  },
+  "player": "Ada",
+  "clock_at_probe": {
+    "minute": 6435.83,
+    "day": 5,
+    "weekday": "Fri",
+    "hour": 11,
+    "minute_of_hour": 15,
+    "time": "11:15",
+    "label": "Day 5 \u00b7 Fri 11:15",
+    "speed": 1,
+    "weather": "light clouds",
+    "is_weekend": false
+  },
+  "living_residents": 72,
+  "errors": [],
+  "note": "Original live Ada world, not a staged fixture; no provider key configured. Backend restarted after final movement fixes."
+}

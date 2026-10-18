@@ -335,7 +335,8 @@ export function drawSprite(ctx, npc, t, opts = {}) {
   const look = npc.look || {};
   const x = npc.x, y = npc.y;
   const walking = npc.status === 'walking';
-  const bob = walking ? Math.sin(t * 9 + hashStr(npc.id) % 10) * 2.5 : Math.sin(t * 2 + hashStr(npc.id) % 7) * 1.1;
+  const phase = (npc.stride ?? t * (7 + hashStr(npc.id)%35/10)) + hashStr(npc.id)%17;
+  const bob = walking ? Math.cos(phase*2) * 1.15 : Math.sin(t * 1.6 + hashStr(npc.id)%17) * .35;
   const s = (look.height || 1) * 0.92;
   const skin = look.skin || '#d9a066';
   const hair = look.hair || '#241a15';
@@ -357,30 +358,32 @@ export function drawSprite(ctx, npc, t, opts = {}) {
   // walking pivots from the feet, leaning into the direction of travel
   if (walking) ctx.rotate(facing * 0.035);
 
-  // legs
-  ctx.fillStyle = '#1a2534';
-  const legSwing = walking ? Math.sin(t * 9 + hashStr(npc.id)) * 5 : 0;
-  rr(ctx, -7, -16, 6, 16 + legSwing, 3); ctx.fill();
-  rr(ctx, 1, -16, 6, 16 - legSwing, 3); ctx.fill();
-
-  // body
-  const g = ctx.createLinearGradient(0, -40, 0, -12);
-  g.addColorStop(0, shade(outfit, 16));
-  g.addColorStop(1, shade(outfit, -22));
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.moveTo(-11, -38);
-  ctx.quadraticCurveTo(-14, -24, -10, -13);
-  ctx.quadraticCurveTo(0, -9, 10, -13);
-  ctx.quadraticCurveTo(14, -24, 11, -38);
-  ctx.quadraticCurveTo(0, -43, -11, -38);
-  ctx.closePath(); ctx.fill();
-
-  // arms
-  ctx.fillStyle = shade(outfit, -14);
-  const armSwing = walking ? Math.sin(t * 9 + 2 + hashStr(npc.id)) * 3 : 0;
-  rr(ctx, -15, -35, 5, 20 + armSwing, 2.5); ctx.fill();
-  rr(ctx, 10, -35, 5, 20 - armSwing, 2.5); ctx.fill();
+  const outfitStyle = look.outfitStyle || ['jacket','tee','hoodie','tunic'][hashStr(npc.id)%4];
+  const accent = look.accent || '#f2c14e';
+  const legSwing=walking?Math.sin(phase)*5:0;
+  // Articulated trouser legs and sneakers, not stretching rectangles.
+  for(const side of [-1,1]){
+    ctx.save();ctx.translate(side*4.4,-16);ctx.rotate(side*legSwing*.045);
+    ctx.fillStyle=look.trousers || (outfitStyle==='tunic'?'#443942':'#263448');rr(ctx,-3.2,0,6.4,14,2.4);ctx.fill();
+    ctx.fillStyle=side===1?'#e3d9c6':'#c4c9c8';rr(ctx,-3.8,12,8.5,4.2,1.6);ctx.fill();
+    ctx.fillStyle='#17212c';rr(ctx,-4,15,9,1.5,.7);ctx.fill();ctx.restore();
+  }
+  // Tailored silhouette, shoulders, neckline and a character-specific layer.
+  const g=ctx.createLinearGradient(-12,-40,14,-10);g.addColorStop(0,shade(outfit,25));g.addColorStop(.6,outfit);g.addColorStop(1,shade(outfit,-28));ctx.fillStyle=g;
+  ctx.beginPath();ctx.moveTo(-8,-40);ctx.quadraticCurveTo(-15,-38,-13,-30);ctx.lineTo(-10,outfitStyle==='tunic'?-9:-16);ctx.quadraticCurveTo(0,-12,10,outfitStyle==='tunic'?-9:-16);ctx.lineTo(13,-30);ctx.quadraticCurveTo(15,-38,8,-40);ctx.closePath();ctx.fill();
+  ctx.fillStyle=shade(skin,-8);rr(ctx,-3,-44,6,7,2);ctx.fill();
+  ctx.strokeStyle=shade(outfit,-38);ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(-7,-39);ctx.quadraticCurveTo(0,-32,7,-39);ctx.stroke();
+  if(outfitStyle==='jacket'||outfitStyle==='hoodie'){
+    ctx.fillStyle=accent;rr(ctx,-3,-35,6,18,1);ctx.fill();ctx.strokeStyle=shade(outfit,38);ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,-36);ctx.lineTo(0,-16);ctx.stroke();
+    if(outfitStyle==='hoodie'){ctx.strokeStyle=accent;ctx.beginPath();ctx.moveTo(-4,-35);ctx.lineTo(-5,-29);ctx.moveTo(4,-35);ctx.lineTo(5,-29);ctx.stroke();}
+  }else{ctx.fillStyle=accent;rr(ctx,4,-32,4,3,1);ctx.fill();}
+  for(const side of [-1,1]){
+    ctx.save();ctx.translate(side*12,-36);ctx.rotate(-side*(.12+(walking?Math.sin(phase)*.24:0)));
+    ctx.fillStyle=shade(outfit,side===1?-8:8);rr(ctx,-3,0,6,outfitStyle==='tee'?10:17,3);ctx.fill();
+    ctx.fillStyle=skin;rr(ctx,-2.4,outfitStyle==='tee'?8:15,4.8,outfitStyle==='tee'?11:5,2.3);ctx.fill();ctx.restore();
+  }
+  if(look.accessory==='scarf'){ctx.fillStyle=accent;rr(ctx,-9,-40,18,4,2);ctx.fill();rr(ctx,5,-37,4,13,1);ctx.fill();}
+  if(look.accessory==='chain'){ctx.strokeStyle='#dfbd68';ctx.lineWidth=1.3;ctx.beginPath();ctx.arc(0,-35,5,0,Math.PI);ctx.stroke();}
 
   // head
   if (facing === -1) ctx.scale(-1, 1);
@@ -408,11 +411,29 @@ export function drawSprite(ctx, npc, t, opts = {}) {
     rr(ctx, -11, -52 + bob, 22, 5, 2); ctx.fill();
   }
 
-  // face dots
+  // Face: brow, eyes, nose and expression retain a readable personality.
   ctx.fillStyle = '#20150f';
   ctx.beginPath(); ctx.arc(-4, -45 + bob, 1.3, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.arc(4, -45 + bob, 1.3, 0, Math.PI * 2); ctx.fill();
 
+  ctx.strokeStyle=shade(skin,-38);ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(0,-44+bob);ctx.lineTo(1,-41+bob);ctx.stroke();
+  ctx.strokeStyle=npc.mood==='irritated'?'#583f32':'#925b49';
+  ctx.beginPath();ctx.moveTo(-3,-38.5+bob);ctx.quadraticCurveTo(0,-36.5+bob,3,-38.5+bob);ctx.stroke();
+  if(style==='ponytail'){ctx.fillStyle=hair;ctx.beginPath();ctx.ellipse(-10,-45+bob,4,10,-.2,0,Math.PI*2);ctx.fill();}
+  if(look.accessory==='earrings'){ctx.fillStyle=accent;for(const x of [-10,10]){ctx.beginPath();ctx.arc(x,-42+bob,1.9,0,Math.PI*2);ctx.fill();}}
+  // Abstract silhouette only: no realistic weapon mechanics or detail.
+  if(npc.armed){
+    ctx.save();ctx.translate(0,-25+bob);ctx.rotate(npc.combat?Math.sin(t*8)*.08:.22);
+    ctx.fillStyle='#252c35';ctx.fillRect(-10,-3,25,5);ctx.fillRect(11,-2,10,3);ctx.fillRect(-4,1,4,8);
+    ctx.fillStyle='#7d8790';ctx.fillRect(-8,-4,11,2);
+    if(npc.combat&&Math.sin(t*11+hashStr(npc.id))>.8){ctx.fillStyle='#ffd68b';ctx.beginPath();ctx.moveTo(22,0);ctx.lineTo(30,-4);ctx.lineTo(27,1);ctx.lineTo(31,5);ctx.closePath();ctx.fill()}
+    ctx.restore();
+  }
+  if(npc.combat&&!npc.armed){
+    ctx.strokeStyle='#eebd83';ctx.lineWidth=3;ctx.beginPath();ctx.arc(0,-27,23,t*4,t*4+2);ctx.stroke();
+    ctx.fillStyle='#ffe2a5';ctx.font='17px system-ui';ctx.fillText('✦',12+Math.sin(t*11)*5,-46);
+  }
   // accessory hint
   if (look.accessory === 'cap') {
     ctx.fillStyle = look.accent || '#f2c14e';
@@ -488,6 +509,25 @@ function drawNameplate(ctx, npc, x, y, t, opts) {
     ctx.fillStyle = '#9fb0c6';
     ctx.fillText('z z', x + w / 2 + 12, ty - h / 2 + Math.sin(t * 2) * 2);
   }
+  ctx.restore();
+}
+
+/** Feet/base Y decides occlusion. Canopies are permeable; solid bases are server obstacles. */
+export function drawScenery(ctx, t) {
+  ctx.save();ctx.translate(t.x,t.y);
+  const bush=t.kind==='bush';
+  if(!bush){
+    const trunk=ctx.createLinearGradient(-6,0,6,0);trunk.addColorStop(0,'#352c23');trunk.addColorStop(.5,'#79604a');trunk.addColorStop(1,'#44372c');
+    ctx.fillStyle=trunk;rr(ctx,-5,-43,10,44,4);ctx.fill();
+    ctx.strokeStyle='#5b4634';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(0,-18);ctx.lineTo(-13,-36);ctx.moveTo(1,-23);ctx.lineTo(13,-39);ctx.stroke();
+  }
+  const r=t.r*(bush?.65:1),cy=bush?-10:-45;
+  const leaf=ctx.createRadialGradient(-r*.3,cy-r*.35,2,0,cy,r*1.2);
+  leaf.addColorStop(0,t.hue>.5?'#80af71':'#71a881');leaf.addColorStop(.5,t.hue>.5?'#46764e':'#3f7758');leaf.addColorStop(1,'#244634');
+  ctx.fillStyle=leaf;ctx.beginPath();ctx.ellipse(0,cy,r,r*(bush?.65:.86),0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='rgba(154,197,129,.18)';
+  for(let i=0;i<6;i++){const a=i*2.4+t.hue;ctx.beginPath();ctx.ellipse(Math.cos(a)*r*.58,cy+Math.sin(a)*r*.45,r*.3,r*.22,a,0,Math.PI*2);ctx.fill();}
+  if(bush){ctx.fillStyle=t.hue>.5?'#e7b486':'#c7a1c9';for(let i=0;i<4;i++){ctx.beginPath();ctx.arc(Math.cos(i*2.1)*r*.6,cy+Math.sin(i*2.1)*4,2,0,Math.PI*2);ctx.fill();}}
   ctx.restore();
 }
 
@@ -593,38 +633,25 @@ export function buildStaticWorld(world) {
     ctx.beginPath(); ctx.ellipse(p.x + p.w * .66, p.y + p.h * .68, 20, 8, .2, 0, Math.PI * 2); ctx.fill();
   }
 
-  // ---- trees -------------------------------------------------------------
-  const rects = Object.values(loc).map(l => ({ x: l.x - 24, y: l.y - 24, w: l.w + 48, h: l.h + 48 }))
-    .concat(homes.map(h => ({ x: h.x - 18, y: h.y - 30, w: 128, h: 120 })));
-  const inside = (x, y, pad = 0) => rects.some(r => x > r.x - pad && x < r.x + r.w + pad && y > r.y - pad && y < r.y + r.h + pad);
-  const trees = [];
-  let attempts = 0;
-  while (trees.length < 74 && attempts < 900) {
-    attempts++;
-    const x = 40 + rand() * (W - 80), y = 90 + rand() * (H - 160);
-    if (inside(x, y, 8)) continue;
-    if (roads.some(line => line.some(([rx, ry]) => Math.hypot(rx - x, ry - y) < 70))) continue;
-    if (trees.some(t => Math.hypot(t.x - x, t.y - y) < 58)) continue;
-    trees.push({ x, y, r: 16 + rand() * 16, hue: rand() });
-  }
-  for (const t of trees) {
-    // shadow
-    ctx.fillStyle = 'rgba(0,0,0,.22)';
-    ctx.beginPath(); ctx.ellipse(t.x + 6, t.y + 12, t.r * 1.2, t.r * .5, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#3a2a1c';
-    rr(ctx, t.x - 3.5, t.y, 7, t.r * .9, 3); ctx.fill();
-    const c1 = t.hue > .5 ? '#2f5e42' : '#376b4a';
-    const c2 = t.hue > .5 ? '#4f8a63' : '#58956b';
-    ctx.fillStyle = c1;
-    ctx.beginPath(); ctx.arc(t.x, t.y - t.r * .25, t.r, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = c2;
-    ctx.beginPath(); ctx.arc(t.x - t.r * .34, t.y - t.r * .5, t.r * .62, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(t.x + t.r * .4, t.y - t.r * .42, t.r * .5, 0, Math.PI * 2); ctx.fill();
+  const rects = Object.values(loc).map(l => ({x:l.x-24,y:l.y-24,w:l.w+48,h:l.h+48}))
+    .concat(homes.map(h=>({x:h.x-18,y:h.y-30,w:128,h:120})));
+  const inside=(x,y,pad=0)=>rects.some(r=>x>r.x-pad&&x<r.x+r.w+pad&&y>r.y-pad&&y<r.y+r.h+pad);
+  // Scenery shadows are ground paint; trunks and foliage are NOT baked here.
+  // They join the actor depth queue, so no sprite is painted on top of a tree.
+  for (const t of world.scenery || []) {
+    ctx.fillStyle='rgba(0,0,0,.22)';
+    ctx.beginPath();ctx.ellipse(t.x+9,t.y+3,t.r*1.1,t.r*.42,0,0,Math.PI*2);ctx.fill();
   }
 
   // ---- buildings ---------------------------------------------------------
   const drawBuilding = (l) => {
     const { x, y, w, h } = l;
+    if(l.kind==='graveyard'){
+      ctx.fillStyle='#3f5847';rr(ctx,x,y,w,h,22);ctx.fill();
+      ctx.fillStyle='#c0b89b';rr(ctx,x+12,y+h-25,w-24,16,6);ctx.fill();
+      for(let i=0;i<8;i++){const gx=x+30+(i%4)*62,gy=y+35+Math.floor(i/4)*40;ctx.fillStyle='#97a49c';rr(ctx,gx,gy,22,27,8);ctx.fill();ctx.fillStyle='#d6d3bf';ctx.fillRect(gx+7,gy+9,8,2);ctx.fillRect(gx+10,gy+6,2,8)}
+      ctx.fillStyle='#12231c';rr(ctx,x+49,y-22,w-98,27,8);ctx.fill();ctx.fillStyle='#e4ebe0';ctx.font='bold 13px system-ui';ctx.textAlign='center';ctx.fillText('Juniper Rest',x+w/2,y-4);ctx.textAlign='start';return;
+    }
     // shadow
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,.34)';
@@ -663,6 +690,15 @@ export function buildStaticWorld(world) {
     ctx.fillStyle = 'rgba(255,214,145,.35)';
     rr(ctx, x + w / 2 - 9, y + h - 30, 18, 16, 4); ctx.fill();
 
+    if(l.kind==='hospital'){
+      ctx.fillStyle='#f3eee1';ctx.fillRect(x+w/2-20,y+23,40,12);ctx.fillRect(x+w/2-6,y+9,12,40);
+    }
+    if(l.kind==='police'||l.kind==='barracks'){
+      ctx.fillStyle='#e1d6a2';ctx.font='26px system-ui';ctx.fillText(l.kind==='police'?'★':'⛨',x+w/2-12,y+45);
+    }
+    if(l.kind==='black_market'){
+      ctx.fillStyle='#1d1a28';ctx.fillRect(x+12,y+20,w-24,18);ctx.fillStyle='#b6a1c5';ctx.font='bold 10px system-ui';ctx.fillText('BACKLOT',x+27,y+33);
+    }
     // kind-specific decorations
     if (l.kind === 'cafe') {
       // awning

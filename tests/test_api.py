@@ -123,7 +123,7 @@ def test_create_world_and_read_state(server):
     assert status == 200, data
     assert data["player"]["name"] == "Ada"
     assert data["player"]["wallet"] == 320
-    assert len(data["npcs"]) == 60
+    assert len(data["npcs"]) == 72
     assert data["clock"]["weekday"] == "Mon"
     status, state = _get(base, "/api/state")
     assert state["player"]["name"] == "Ada"
@@ -138,20 +138,24 @@ def test_world_endpoint(server):
     assert len(world["locations"]) >= 11
     assert len(world["homes"]) == 20
     assert len(world["items"]) >= 20
-    assert len(world["npcs"]) == 60
+    assert len(world["npcs"]) == 72
 
 
 def test_action_contract_and_proximity(server):
     base, _ = server
     state = ensure_world(base)
-    zara = next(n for n in state["npcs"] if n["first"] == "Zara")
+    # Home residents are now indoors and intentionally cannot be approached.
+    # Exercise proximity with an outdoor resident, not a story-driven interior.
+    zara = max((n for n in state['npcs'] if not n['indoors']),
+               key=lambda n: (n['x']-state['player']['x'])**2 + (n['y']-state['player']['y'])**2)
+    resident_id = zara['id']
     status, blocked = _post(base, "/api/action", {
         "type": "talk", "npc_id": zara["id"], "text": "hi",
     })
     assert status == 422 and blocked["code"] == "too_far"
     _post(base, "/api/speed", {"speed": 0})  # pause so the target stays put
     _, state = _get(base, "/api/state")
-    zara = next(n for n in state["npcs"] if n["first"] == "Zara")
+    zara = next(n for n in state['npcs'] if n['id'] == resident_id)
     status, moved = _post(base, "/api/action", {
         "type": "move", "x": zara["x"] + 20, "y": zara["y"] + 8,
     })
@@ -167,7 +171,7 @@ def test_action_contract_and_proximity(server):
         time.sleep(0.25)
     assert dist < 130, f"player did not arrive (distance {dist:.0f})"
     status, talk = _post(base, "/api/action", {
-        "type": "talk", "npc_id": zara["id"], "text": "Hey Zara, how's it going?",
+        "type": "talk", "npc_id": zara["id"], "text": "Hey there, how's it going?",
     })
     assert status == 200, talk
     assert talk["reply"]

@@ -10,6 +10,12 @@ from blxverse.engine import actions
 from blxverse.engine.sim import SimError, Simulation
 
 
+@pytest.fixture(autouse=True)
+def isolate_default_data_directory(tmp_path, monkeypatch):
+    """Even tests that omit save_path must never overwrite a running game."""
+    monkeypatch.setenv("BLXVERSE_DATA_DIR", str(tmp_path / "isolated-data"))
+
+
 @pytest.fixture()
 def sim(tmp_path):
     return Simulation.new(

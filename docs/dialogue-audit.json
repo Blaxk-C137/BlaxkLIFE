@@ -1,0 +1,588 @@
+{
+  "result": "PASS",
+  "seed": 20261017,
+  "residents": 72,
+  "sampled_replies": 86400,
+  "minimum_distinct_greetings_per_resident": 1200,
+  "nominal_slots_per_resident": 1152000,
+  "elapsed_seconds": 4.17,
+  "note": "Nominal slots combine authored fragments. Not a million independently authored stories; grounded questions and safety/consent intentionally constrain replies.",
+  "cast": [
+    {
+      "name": "Zara",
+      "id": "npc_001",
+      "vibe": "Independent sprite",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Maybe this sounds strange. Hey, Neighbour. You found me at Two Rivers Cafe. This is very much my thing: I am Zara, and I would rather have a real conversation than a perfect one. Your turn, if you want."
+    },
+    {
+      "name": "Daniel",
+      "id": "npc_002",
+      "vibe": "Low-key gear",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "One observation: Hey. I can pause the day for a proper hello. If you want the honest version, the bigger dream is to open a small design studio. I am curious what you noticed. You're glowing today, by the way."
+    },
+    {
+      "name": "Ifeoma",
+      "id": "npc_003",
+      "vibe": "Playful spark",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Ah, you! Hello, neighbour. What is on your mind? Away from the small talk, I am Ifeoma, and I would rather have a real conversation than a perfect one. Your turn, if you want. Good energy on you today — I noticed."
+    },
+    {
+      "name": "Jenny",
+      "id": "npc_004",
+      "vibe": "The bright connector",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Well, hello there. Neighbour! Perfect timing — I have news, snacks, and a theory. Pick an order. One thing about me: I have a soft spot for mango cake. No pressure to have a perfect answer. You're glowing today, by the way."
+    },
+    {
+      "name": "Omonu",
+      "id": "npc_005",
+      "vibe": "The observant realist",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "I have a theory. Hello! I was just thinking about street photography. Behind all the noise, the bigger dream is to headline the neighborhood festival. I have time for an honest answer. You're glowing today, by the way."
+    },
+    {
+      "name": "Fati",
+      "id": "npc_006",
+      "vibe": "The quietly fearless one",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "My honest answer? Hey, Neighbour. You found me at The Junkyard Gym. Something I keep coming back to: the bigger dream is to become a top chef. What matters to you in that?"
+    },
+    {
+      "name": "Rahma",
+      "id": "npc_007",
+      "vibe": "Expressive sprite",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "There is a feeling here. Hey, Neighbour. You found me at Two Rivers Cafe. Here is the personal bit: kindness matters to me. No pressure to have a perfect answer."
+    },
+    {
+      "name": "Chiamaka",
+      "id": "npc_008",
+      "vibe": "Independent sprite",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Let me find the words. A familiar face makes Two Rivers Cafe better. One thing about me: coffee is one of my favourite ways to spend time. We do not have to agree on everything. You look like today's treating you well."
+    },
+    {
+      "name": "Zuri",
+      "id": "npc_009",
+      "vibe": "Reflective flame",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "I am taking this seriously. Hello! I was just thinking about new Afrobeats drops. A small detail that matters to me: I am Zuri, and I would rather have a real conversation than a perfect one. We can keep this simple."
+    },
+    {
+      "name": "Eboh",
+      "id": "npc_010",
+      "vibe": "The straight-talking creative",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "I will put it plainly. There you are, Neighbour. How is your corner of BlaxkVille? If you want the honest version, I am Eboh, and I would rather have a real conversation than a perfect one. What would you do differently?"
+    },
+    {
+      "name": "Bisi",
+      "id": "npc_011",
+      "vibe": "Reflective flame",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "I am taking this seriously. A familiar face makes Two Rivers Cafe better. Something I keep coming back to: people know me as the one who wears great shoes. That is where my head is today. You're glowing today, by the way."
+    },
+    {
+      "name": "Halima",
+      "id": "npc_012",
+      "vibe": "Independent gear",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Looking at it closely, Oh hey, Neighbour. Good timing, I was debugging a thought. How's the day treating you? Off the top of my head, boardgames is one of my favourite ways to spend time. What would make today a little better for you?"
+    },
+    {
+      "name": "Musty",
+      "id": "npc_013",
+      "vibe": "The laid-back storyteller",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "A quiet thought: A familiar face makes BlaxkVille Market better. If you want the honest version, jazz is my kind of music. I am curious what you noticed."
+    },
+    {
+      "name": "Femi",
+      "id": "npc_014",
+      "vibe": "Reflective storm",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "I have thoughts. Hello! I was just thinking about AI in games. This is very much my thing: I have a soft spot for mango cake. Tell me your version."
+    },
+    {
+      "name": "Elvina",
+      "id": "npc_015",
+      "vibe": "The dreamy maker",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "I keep thinking about it. There you are, Neighbour. How is your corner of BlaxkVille? A small detail that matters to me: my work as a journalist is only one part of me. What are you looking forward to?"
+    },
+    {
+      "name": "Legend",
+      "id": "npc_016",
+      "vibe": "The big-dream builder",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Keep this in mind. Neighbour. I was just reviewing my week. Ambitious, right? It's a whole thing. If you want the honest version, creativity matters to me. I am happy to listen."
+    },
+    {
+      "name": "Bashir",
+      "id": "npc_017",
+      "vibe": "Independent zen",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "I am listening. Hey, Neighbour. You found me at Two Rivers Cafe. One thing about me: people know me as the one who carries loose tea in their bag. What matters to you in that?"
+    },
+    {
+      "name": "Naomi",
+      "id": "npc_018",
+      "vibe": "Independent trickster",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Plot twist: Hello, neighbour. What is on your mind? Off the top of my head, I am interested in gaming as well as my work. I have time for an honest answer."
+    },
+    {
+      "name": "Abdullahi",
+      "id": "npc_019",
+      "vibe": "The calm strategist",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "No hurry. Hello, neighbour. What is on your mind? For me, patience is a plan, not a delay. Your turn, if you want."
+    },
+    {
+      "name": "Joski",
+      "id": "npc_020",
+      "vibe": "The friendly mischief-maker",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "No witnesses needed. Hello! I was just thinking about tournament brackets. Something I keep coming back to: stability matters to me. What matters to you in that? You're glowing today, by the way."
+    },
+    {
+      "name": "Layla",
+      "id": "npc_021",
+      "vibe": "Low-key trickster",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Between us, then. Look at this face — innocent, trustworthy. Now ignore everything I do next. For me, I want to find a better work rhythm. What is on your mind?"
+    },
+    {
+      "name": "Nkechi",
+      "id": "npc_022",
+      "vibe": "Thoughtful spark",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Good timing. Good to see you without a screen between us. If you want the honest version, jazz is my kind of music. What would make today a little better for you?"
+    },
+    {
+      "name": "Maya",
+      "id": "npc_023",
+      "vibe": "Expressive flame",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "A little progress: Hello, neighbour. What is on your mind? Something I keep coming back to: I have a soft spot for tacos. I have time for an honest answer."
+    },
+    {
+      "name": "Uchechi",
+      "id": "npc_024",
+      "vibe": "Restless trickster",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "I will behave. Mostly. There you are, Neighbour. How is your corner of BlaxkVille? Away from the small talk, I have a soft spot for grilled fish. Your turn, if you want. You look like today's treating you well."
+    },
+    {
+      "name": "Ysmanny",
+      "id": "npc_025",
+      "vibe": "The playlist romantic",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "I keep thinking about it. A familiar face makes Golden Hour Studio better. One thing about me: I want to get through a busy week. We do not have to agree on everything."
+    },
+    {
+      "name": "Sage",
+      "id": "npc_026",
+      "vibe": "Warm trickster",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "I have a tiny theory. Neighbour! Excellent. I need an alibi and a snack, in that order. Off the top of my head, people know me as the one who leaves doodles on receipts. I am curious what you noticed. You're glowing today, by the way."
+    },
+    {
+      "name": "Aisha",
+      "id": "npc_027",
+      "vibe": "Expressive zen",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "No hurry. Hey. I can pause the day for a proper hello. Away from the small talk, my work as a dance instructor is only one part of me. Tell me your version."
+    },
+    {
+      "name": "Samban",
+      "id": "npc_028",
+      "vibe": "The community spark",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Ah, you! Heyyy Neighbour! Oh good, I was just telling the barista about the cake situation. Sit, sit. Off the top of my head, I am interested in coffee as well as my work. We do not have to agree on everything."
+    },
+    {
+      "name": "Dominion",
+      "id": "npc_029",
+      "vibe": "Low-key trickster",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "I will behave. Mostly. Look at this face — innocent, trustworthy. Now ignore everything I do next. Behind all the noise, hip-hop is my kind of music. I am curious what you noticed. You look like today's treating you well."
+    },
+    {
+      "name": "Ibrahim",
+      "id": "npc_030",
+      "vibe": "Independent trickster",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Plot twist: Hello, neighbour. What is on your mind? A small detail that matters to me: boardgames is one of my favourite ways to spend time. Tell me if I am looking at this the wrong way. You're glowing today, by the way."
+    },
+    {
+      "name": "Dami",
+      "id": "npc_031",
+      "vibe": "Low-key sprite",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Maybe this sounds strange. A familiar face makes Juniper Park better. One thing about me: volunteering is one of my favourite ways to spend time. Tell me if I am looking at this the wrong way."
+    },
+    {
+      "name": "Juno",
+      "id": "npc_032",
+      "vibe": "Independent spark",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "You caught me smiling. There you are, Neighbour. How is your corner of BlaxkVille? Something I keep coming back to: I am Juno, and I would rather have a real conversation than a perfect one. I would like to hear your take."
+    },
+    {
+      "name": "Idris",
+      "id": "npc_033",
+      "vibe": "Thoughtful spark",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Now we can talk. A familiar face makes Golden Hour Studio better. Off the top of my head, the bigger dream is to become the neighborhood's best barista. We do not have to agree on everything. You look like today's treating you well."
+    },
+    {
+      "name": "Nneka",
+      "id": "npc_034",
+      "vibe": "Expressive storm",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Let me be clear. Hello, neighbour. What is on your mind? For me, the bigger dream is to own a home by the river. Tell me your version."
+    },
+    {
+      "name": "Chuks",
+      "id": "npc_035",
+      "vibe": "Warm spark",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Ah, you! Good to see you without a screen between us. Off the top of my head, I want to patch things up with someone. What matters to you in that? You look like today's treating you well."
+    },
+    {
+      "name": "Tomi",
+      "id": "npc_036",
+      "vibe": "Warm spark",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Well, hello there. Look who wandered in! You know Two Rivers Cafe instantly gets 3% better when you show up. Something I keep coming back to: people know me as the one who brings snacks everywhere. We do not have to agree on everything. Good energy on you today — I noticed."
+    },
+    {
+      "name": "Samir",
+      "id": "npc_037",
+      "vibe": "Expressive spark",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Ah, you! Good to see you without a screen between us. If you want the honest version, growth matters to me. No pressure to have a perfect answer."
+    },
+    {
+      "name": "Tobi",
+      "id": "npc_038",
+      "vibe": "Warm sprite",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "There is a feeling here. Hello, neighbour. What is on your mind? Here is the personal bit: I have a soft spot for suya. There is no rush. Good energy on you today — I noticed."
+    },
+    {
+      "name": "Hauwa",
+      "id": "npc_039",
+      "vibe": "Reflective flame",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Let us make it count. Neighbour. I was just reviewing my week. Ambitious, right? It's a whole thing. One thing about me: the bigger dream is to become a top chef. I am curious what you noticed. Good energy on you today — I noticed."
+    },
+    {
+      "name": "Amina",
+      "id": "npc_040",
+      "vibe": "Thoughtful gear",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Let me think. Good to see you without a screen between us. Away from the small talk, hip-hop is my kind of music. What is on your mind?"
+    },
+    {
+      "name": "Kaveh",
+      "id": "npc_041",
+      "vibe": "Low-key flame",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Let us make it count. Hey. I can pause the day for a proper hello. For me, community matters to me. What matters to you in that? You look like today's treating you well."
+    },
+    {
+      "name": "Damilola",
+      "id": "npc_042",
+      "vibe": "Independent sprite",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "The odd thing is, Hello! I was just thinking about vinyl digging. A small detail that matters to me: people know me as the one who hums in three keys. What is on your mind? Good energy on you today — I noticed."
+    },
+    {
+      "name": "Yara",
+      "id": "npc_043",
+      "vibe": "Playful sprite",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "I keep thinking about it. Welcome to my small interruption of the day, Neighbour. A small detail that matters to me: the bigger dream is to be known for generosity. What matters to you in that?"
+    },
+    {
+      "name": "Teni",
+      "id": "npc_044",
+      "vibe": "Reflective gear",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "One observation: Welcome to my small interruption of the day, Neighbour. If you want the honest version, people know me as the one who takes notes in a tiny notebook. Your turn, if you want."
+    },
+    {
+      "name": "Ayo",
+      "id": "npc_045",
+      "vibe": "Independent sprite",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Maybe this sounds strange. Oh! Hi, Neighbour. I was working on something and forgot the outside world existed. Away from the small talk, I have a soft spot for ramen. What has your day been like?"
+    },
+    {
+      "name": "Sade",
+      "id": "npc_046",
+      "vibe": "Independent flame",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Here is the plan. Hey, Neighbour. You found me at The Junkyard Gym. Here is the personal bit: loyalty matters to me. What would you do differently?"
+    },
+    {
+      "name": "Zayyan",
+      "id": "npc_047",
+      "vibe": "Warm flame",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "A little progress: A familiar face makes Neon Threads better. This is very much my thing: my work as a barber is only one part of me. What about you?"
+    },
+    {
+      "name": "Chinaza",
+      "id": "npc_048",
+      "vibe": "Reflective spark",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Now we can talk. Welcome to my small interruption of the day, Neighbour. Away from the small talk, people know me as the one who snorts when they laugh. I am happy to listen."
+    },
+    {
+      "name": "Imade",
+      "id": "npc_049",
+      "vibe": "Thoughtful trickster",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "I will behave. Mostly. Hey. I can pause the day for a proper hello. If you want the honest version, people know me as the one who knows every shortcut. What matters to you in that?"
+    },
+    {
+      "name": "Nadia",
+      "id": "npc_050",
+      "vibe": "Thoughtful spark",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Now we can talk. Hello! I was just thinking about the new phone launch. Here is the personal bit: I want to make one new friend this month. Tell me if I am looking at this the wrong way."
+    },
+    {
+      "name": "Bruno",
+      "id": "npc_051",
+      "vibe": "Playful spark",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "You caught me smiling. Neighbour! Perfect timing — I have news, snacks, and a theory. Pick an order. If you want the honest version, I am interested in coffee as well as my work. That is where my head is today."
+    },
+    {
+      "name": "Chidi",
+      "id": "npc_052",
+      "vibe": "Thoughtful sprite",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Let me find the words. A familiar face makes Two Rivers Cafe better. Away from the small talk, ambition matters to me. What would you do differently?"
+    },
+    {
+      "name": "Nia",
+      "id": "npc_053",
+      "vibe": "Restless zen",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "A quiet thought: Neighbour. Good to see you. I was just enjoying the quiet before it gets loud again. Here is the personal bit: I want to learn a new skill. Tell me your version."
+    },
+    {
+      "name": "Elias",
+      "id": "npc_054",
+      "vibe": "Reflective flame",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "I am taking this seriously. Good to see you without a screen between us. If you want the honest version, I have a soft spot for suya. There is no rush. You look like today's treating you well."
+    },
+    {
+      "name": "Adaeze",
+      "id": "npc_055",
+      "vibe": "Reflective trickster",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "No witnesses needed. There you are, Neighbour. How is your corner of BlaxkVille? If you want the honest version, people know me as the one who leaves doodles on receipts. What about you?"
+    },
+    {
+      "name": "Chiara",
+      "id": "npc_056",
+      "vibe": "Restless flame",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Keep this in mind. Neighbour! Great, you look like someone with momentum today. Tell me I'm right. Behind all the noise, I am interested in reading as well as my work. No pressure to have a perfect answer. You're glowing today, by the way."
+    },
+    {
+      "name": "Ofucks",
+      "id": "npc_057",
+      "vibe": "The dry-wit night owl",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Before you blame me, Good to see you without a screen between us. One thing about me: I have a soft spot for ramen. No pressure to have a perfect answer."
+    },
+    {
+      "name": "Omar",
+      "id": "npc_058",
+      "vibe": "Expressive trickster",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "I have a tiny theory. There you are, Neighbour. How is your corner of BlaxkVille? One thing about me: I want to finish a personal project. What about you?"
+    },
+    {
+      "name": "Wren",
+      "id": "npc_059",
+      "vibe": "Expressive spark",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "I like this interruption. Look who wandered in! You know Two Rivers Cafe instantly gets 3% better when you show up. For me, people know me as the one who brings snacks everywhere. What would make today a little better for you?"
+    },
+    {
+      "name": "Smarty",
+      "id": "npc_060",
+      "vibe": "The curious analyst",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "One observation: Oh hey, Neighbour. Good timing, I was debugging a thought. How's the day treating you? Behind all the noise, my work as a librarian is only one part of me. I have time for an honest answer."
+    },
+    {
+      "name": "Ines",
+      "id": "npc_061",
+      "vibe": "Expressive flame",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Let us make it count. Welcome to my small interruption of the day, Neighbour. Behind all the noise, my work as a electrician is only one part of me. Your turn, if you want."
+    },
+    {
+      "name": "Lola",
+      "id": "npc_062",
+      "vibe": "Restless spark",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Okay, listen. Heyyy Neighbour! Oh good, I was just telling the barista about the cake situation. Sit, sit. Away from the small talk, loyalty matters to me. What are you looking forward to?"
+    },
+    {
+      "name": "Imani",
+      "id": "npc_063",
+      "vibe": "Thoughtful flame",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "My honest answer? Neighbour! Great, you look like someone with momentum today. Tell me I'm right. This is very much my thing: I am Imani, and I would rather have a real conversation than a perfect one. I am happy to listen."
+    },
+    {
+      "name": "Amara",
+      "id": "npc_064",
+      "vibe": "Low-key sprite",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Maybe this sounds strange. Oh! Hi, Neighbour. I was working on something and forgot the outside world existed. Here is the personal bit: the bigger dream is to launch a fashion line. What would make today a little better for you? You're glowing today, by the way."
+    },
+    {
+      "name": "Maryam",
+      "id": "npc_065",
+      "vibe": "Warm trickster",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "For the record, Welcome to my small interruption of the day, Neighbour. This is very much my thing: the bigger dream is to run for the neighborhood council. That is where my head is today."
+    },
+    {
+      "name": "Thea",
+      "id": "npc_066",
+      "vibe": "Low-key sprite",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Stay with me. Hey. I can pause the day for a proper hello. Behind all the noise, the bigger dream is to write a book. What would make today a little better for you? Good energy on you today — I noticed."
+    },
+    {
+      "name": "Khadija",
+      "id": "npc_067",
+      "vibe": "Thoughtful trickster",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "No witnesses needed. A familiar face makes home better. This is very much my thing: the bigger dream is to tour with a band. We do not have to agree on everything."
+    },
+    {
+      "name": "Bisola",
+      "id": "npc_068",
+      "vibe": "Playful sprite",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Picture this. Hello, neighbour. What is on your mind? Something I keep coming back to: I am Bisola, and I would rather have a real conversation than a perfect one. That is where my head is today. You're glowing today, by the way."
+    },
+    {
+      "name": "Simi",
+      "id": "npc_069",
+      "vibe": "Low-key sprite",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "A little confession: Hey, Neighbour. You found me at Neon Threads. Off the top of my head, I want to find a better work rhythm. Your turn, if you want."
+    },
+    {
+      "name": "Ene",
+      "id": "npc_070",
+      "vibe": "Warm spark",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Come closer. Heyyy Neighbour! Oh good, I was just telling the barista about the cake situation. Sit, sit. If you want the honest version, the bigger dream is to coach the local kids' team. What has your day been like?"
+    },
+    {
+      "name": "Zainab",
+      "id": "npc_071",
+      "vibe": "Thoughtful spark",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Okay, listen. A familiar face makes Two Rivers Cafe better. One thing about me: I want to find a better work rhythm. What matters to you in that? Good energy on you today — I noticed."
+    },
+    {
+      "name": "Tara",
+      "id": "npc_072",
+      "vibe": "Independent flame",
+      "sampled_distinct_greetings": 1200,
+      "nominal_composition_slots": 1152000,
+      "example": "Keep this in mind. A familiar face makes Juniper Park better. One thing about me: volunteering is one of my favourite ways to spend time. What about you? You look like today's treating you well."
+    }
+  ]
+}

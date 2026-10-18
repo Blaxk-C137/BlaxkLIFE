@@ -1,0 +1,221 @@
+{
+  "version": "0.4.0",
+  "result": "PASS",
+  "test_command": "python3 -m pytest -n 2 --dist worksteal -vv",
+  "tests_passed": 106,
+  "tests_failed": 0,
+  "test_duration_seconds": 810.47,
+  "checks": [
+    "Ruff",
+    "Python compileall",
+    "all web/js JavaScript syntax checks",
+    "git diff whitespace check"
+  ],
+  "evidence": {
+    "render-check-0.4.json": {
+      "result": "PASS",
+      "python": "3.13.16",
+      "duration_seconds": 30.01,
+      "speed": 4,
+      "state_requests": 120,
+      "state_latency_p50_ms": 19.29,
+      "state_latency_p95_ms": 125.84,
+      "cpu_percent_one_core": 11.26,
+      "rss_peak_mib": 29.76,
+      "checks": [
+        "PORT-only boot",
+        "0.0.0.0 bind",
+        "public health",
+        "private game",
+        "static assets",
+        "72 NPCs at 4x",
+        "SIGTERM exit 0",
+        "same-disk restart",
+        "saved player/clock/speed",
+        "calendar and export"
+      ],
+      "note": "Local sandbox measurement, not a benchmark on Render hardware."
+    },
+    "population-audit.json": {
+      "result": "PASS",
+      "window_game_minutes": 30,
+      "samples_per_scenario": 120,
+      "scenarios": [
+        {
+          "scenario": "fresh morning",
+          "residents": 72,
+          "initial_outdoors_eligible": 57,
+          "moved_over_8px": 72,
+          "eligible_moved": 57,
+          "non_spotlight_moved": 54,
+          "ending_indoors": 0,
+          "peak_walkers": 43,
+          "close_pair_frames_under_22px": 0,
+          "blocked_position_frames": 0,
+          "simulation_seconds_for_30_game_minutes": 1.185
+        },
+        {
+          "scenario": "settled weekday mid-block",
+          "residents": 72,
+          "initial_outdoors_eligible": 71,
+          "moved_over_8px": 71,
+          "eligible_moved": 71,
+          "non_spotlight_moved": 54,
+          "ending_indoors": 1,
+          "peak_walkers": 31,
+          "close_pair_frames_under_22px": 0,
+          "blocked_position_frames": 0,
+          "simulation_seconds_for_30_game_minutes": 0.846
+        },
+        {
+          "scenario": "asleep indoors",
+          "residents": 72,
+          "initial_outdoors_eligible": 0,
+          "moved_over_8px": 0,
+          "eligible_moved": 0,
+          "non_spotlight_moved": 0,
+          "ending_indoors": 72,
+          "peak_walkers": 0,
+          "close_pair_frames_under_22px": 0,
+          "blocked_position_frames": 0,
+          "simulation_seconds_for_30_game_minutes": 0.213
+        },
+        {
+          "scenario": "next-day morning departure",
+          "residents": 72,
+          "initial_outdoors_eligible": 57,
+          "moved_over_8px": 72,
+          "eligible_moved": 57,
+          "non_spotlight_moved": 54,
+          "ending_indoors": 0,
+          "peak_walkers": 43,
+          "close_pair_frames_under_22px": 0,
+          "blocked_position_frames": 0,
+          "simulation_seconds_for_30_game_minutes": 1.145
+        },
+        {
+          "scenario": "copy of saved world, no reset",
+          "residents": 72,
+          "initial_outdoors_eligible": 60,
+          "moved_over_8px": 60,
+          "eligible_moved": 60,
+          "non_spotlight_moved": 46,
+          "ending_indoors": 45,
+          "peak_walkers": 54,
+          "close_pair_frames_under_22px": 0,
+          "blocked_position_frames": 0,
+          "simulation_seconds_for_30_game_minutes": 3.021
+        }
+      ],
+      "note": "Homes/sleepers are intentionally stationary indoors; outdoor residents keep schedules offscreen. Live save never modified."
+    },
+    "ui-regression.json": {
+      "result": "PASS",
+      "checks": [
+        "multiple ordinary walkers frame-sampled; continuous cruising playback, independent population audit",
+        "procedural music gesture unlock, mute and unmute",
+        "slow typing, native focus, one send, live incoming reply",
+        "failed message retains draft",
+        "Gist Hub draft, tab draft restoration, post, comment",
+        "clickable dismissal, fixed five-second expiry, no pinned story stack",
+        "6 viewport sizes, 7 phone tabs, profile/shop/settings/help/stats/journal, emulated keyboard"
+      ],
+      "viewports": [
+        [
+          320,
+          740
+        ],
+        [
+          360,
+          800
+        ],
+        [
+          390,
+          844
+        ],
+        [
+          768,
+          1024
+        ],
+        [
+          1024,
+          768
+        ],
+        [
+          1440,
+          900
+        ]
+      ],
+      "errors": [],
+      "motion": {
+        "resident": "npc_067",
+        "samples": 97,
+        "stationary_fraction": 0,
+        "median_px_second": 249.45553304264382,
+        "sampled_actors": 5,
+        "measurements": [
+          {
+            "resident": "npc_067",
+            "samples": 97,
+            "stationary_fraction": 0,
+            "median_px_second": 249.45553304264382
+          },
+          {
+            "resident": "npc_055",
+            "samples": 97,
+            "stationary_fraction": 0,
+            "median_px_second": 263.36355376868346
+          },
+          {
+            "resident": "npc_028",
+            "samples": 97,
+            "stationary_fraction": 0,
+            "median_px_second": 201.70520776259485
+          },
+          {
+            "resident": "npc_051",
+            "samples": 97,
+            "stationary_fraction": 0,
+            "median_px_second": 211.68850689427495
+          },
+          {
+            "resident": "npc_041",
+            "samples": 97,
+            "stationary_fraction": 0,
+            "median_px_second": 181.46808119633357
+          }
+        ]
+      },
+      "note": "Chromium viewport/software-keyboard emulation, not a physical-device accessibility audit."
+    },
+    "dialogue-network-check.json": {
+      "result": "PASS",
+      "checks": [
+        "slow chat provider does not block polling or clock",
+        "slow call provider does not block polling or clock",
+        "remote reply delivered to text thread",
+        "server strips private dialogue context"
+      ],
+      "max_state_latency_ms": 19.88,
+      "note": "Local mocked provider. Not a live Gemini API test."
+    },
+    "live-preview-0.4.json": {
+      "version": "0.4.0",
+      "clock": "Day 4 \u00b7 Thu 11:11",
+      "player": "Ada",
+      "residents": 72,
+      "maximum_visible_actors": 19,
+      "visible_residents_moved": 13,
+      "frames": 101,
+      "window_seconds": 4,
+      "save_preserved": true,
+      "errors": []
+    }
+  },
+  "limits": [
+    "Local CPU measurement, not actual Render deployment or Render-hardware benchmark.",
+    "Gemini payload/error paths and mock delivery tested; no live Google API key.",
+    "Chromium viewport/keyboard emulation, not physical-device or full-accessibility certification.",
+    "One shared single-player world. Render durable saves require a mounted paid disk."
+  ]
+}

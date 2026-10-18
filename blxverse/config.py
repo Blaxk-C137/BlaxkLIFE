@@ -8,14 +8,14 @@ from __future__ import annotations
 
 import os
 
-VERSION = "0.2.0"
+VERSION = "0.6.0"
 SCHEMA_VERSION = 3
 SAVE_FORMAT = "blxverse-save"
 
 # ---------------------------------------------------------------------------
 # World / simulation
 # ---------------------------------------------------------------------------
-NPC_COUNT = 60
+NPC_COUNT = 72
 SPOTLIGHT_COUNT = 18
 DAY_START_MINUTE = 7 * 60 + 30          # Monday 07:30 at world creation
 TICK_SECONDS = 0.25                      # real seconds between simulation ticks
@@ -115,7 +115,7 @@ VOICE_TARGET_MS = 800
 VOICE_METRIC_CAP = 400
 
 # ---------------------------------------------------------------------------
-# Optional selective LLM (off unless BLXVERSE_LLM_API_KEY is set)
+# Optional dialogue LLM (Gemini or an OpenAI-compatible provider key required)
 # ---------------------------------------------------------------------------
 LLM_MODEL = "gpt-4o-mini"
 LLM_BASE_URL = "https://api.openai.com/v1"

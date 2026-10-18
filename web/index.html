@@ -47,9 +47,9 @@
   <div class="setup-grid">
     <div class="setup-hero">
       <span class="eyebrow">A LIVING AI WORLD · SINGLE PLAYER</span>
-      <h1>Move into a neighborhood<br/><em>that keeps living.</em></h1>
+      <h1>Find your people.<br/><em>Live in BlaxkVille.</em></h1>
       <p class="hero-copy">
-        60 residents with homes, jobs, moods, secrets and memories. Somebody's
+        72 adult residents with homes, jobs, moods, secrets and memories. Somebody's
         planning a party. Somebody's spreading a rumor. Somebody's about to start
         a cartoon dust cloud in the square. You're one of them now.
       </p>
@@ -57,7 +57,7 @@
         <li><span class="dot amber"></span><b>Living community</b> — routines and relationships that change when you're elsewhere.</li>
         <li><span class="dot mint"></span><b>Real memory</b> — they remember what you said, and who told them what.</li>
         <li><span class="dot coral"></span><b>Playful chaos</b> — non-graphic, exaggerated slapstick with social consequences.</li>
-        <li><span class="dot violet"></span><b>Voice calls</b> — speak naturally, interrupt naturally, on-device speech.</li>
+        <li><span class="dot violet"></span><b>Voice calls</b> — speak naturally, interrupt naturally, browser speech.</li>
       </ul>
       <div class="hero-foot">
         <span class="micro-badge">🧠 AI characters are clearly fictional simulations</span>
@@ -130,7 +130,7 @@
 
       <div class="creator-foot">
         <div class="home-note">🏡 You'll get a small place on Juniper Row, <b>320 BLX</b>, and a very loud neighborhood.</div>
-        <button class="btn primary big" id="btn-create">Move in to Bellwether <span class="arrow">→</span></button>
+        <button class="btn primary big" id="btn-create">Move in to BlaxkVille <span class="arrow">→</span></button>
         <button class="btn ghost big hidden" id="btn-continue">Continue as <b id="continue-name">—</b> →</button>
         <p class="fineprint" id="creator-error" role="alert"></p>
       </div>
@@ -166,6 +166,8 @@
     </div>
 
     <div class="topbar-actions">
+      <button class="icon-btn" id="btn-civic" title="Neighbourhood safety, hospital and memorials" aria-label="Neighbourhood">🛡️</button>
+          <button class="icon-btn" id="btn-music" aria-label="Toggle background music" aria-pressed="true">♫</button>
       <button class="icon-btn" id="btn-phone" title="Phone (P)" aria-label="Phone">
         <span class="ico">📱</span><span class="badge hidden" id="phone-badge">0</span>
       </button>
@@ -175,7 +177,7 @@
   </header>
 
   <div class="stage">
-    <canvas id="world" aria-label="Bellwether Block neighborhood map"></canvas>
+    <canvas id="world" aria-label="BlaxkVille neighborhood map"></canvas>
     <div class="hover-tip hidden" id="hover-tip"></div>
 
     <div class="vignette"></div>
@@ -185,7 +187,8 @@
         <button class="live-event hidden" id="live-event" title="Something is happening right now"></button>
         <div class="location-chip card-soft" id="location-chip">
           <span class="loc-ico">🏘️</span>
-          <div><b id="location-name">Bellwether Block</b><span id="location-sub">Juniper Row · public street</span></div>
+          <div><b id="location-name">BlaxkVille</b><span id="location-sub">Juniper Row · public street</span></div>
+          <button id="dismiss-location" aria-label="Dismiss location">✕</button>
         </div>
         <div class="quest-stack" id="quest-stack"></div>
         <div class="date-stack" id="date-stack"></div>

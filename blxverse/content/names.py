@@ -44,3 +44,10 @@ TOPICS = {
 }
 
 COMPLIMENT_TARGETS = ["style", "sense of humor", "energy", "kindness", "ambition", "taste in music"]
+
+
+# Guaranteed residents in every full-size BlaxkVille cast; story anchors stay.
+FEATURED_M = ["Abdullahi", "Smarty", "Musty", "Legend", "Eboh", "Joski", "Ofucks", "Ysmanny", "Samban", "Ibrahim", "Dami", "Chuks", "Zayyan", "Bashir", "Dominion"]
+FEATURED_F = ["Fati", "Jenny", "Omonu", "Elvina", "Zainab", "Amina", "Chiamaka", "Zuri", "Ene", "Adaeze", "Amara", "Aisha", "Halima", "Ifeoma", "Sade", "Imani", "Naomi", "Layla", "Nadia", "Nkechi", "Maya", "Bisi", "Lola", "Yara", "Khadija", "Rahma", "Nneka", "Uchechi", "Chinaza", "Tomi", "Damilola", "Hauwa", "Maryam", "Simi", "Teni", "Bisola"]
+FIRST_NAMES_M.extend(n for n in FEATURED_M if n not in FIRST_NAMES_M)
+FIRST_NAMES_F.extend(n for n in FEATURED_F if n not in FIRST_NAMES_F)

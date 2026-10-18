@@ -1,0 +1,13 @@
+{
+  "result": "PASS",
+  "checks": [
+    "320x740: long talk/text/call logs, actual cross-channel recall, newest message scroll, visible composer, no call overlap",
+    "390x844: long talk/text/call logs, actual cross-channel recall, newest message scroll, visible composer, no call overlap",
+    "768x1024: long talk/text/call logs, actual cross-channel recall, newest message scroll, visible composer, no call overlap",
+    "1024x768: long talk/text/call logs, actual cross-channel recall, newest message scroll, visible composer, no call overlap",
+    "1440x900: long talk/text/call logs, actual cross-channel recall, newest message scroll, visible composer, no call overlap",
+    "390x440: long talk/text/call logs, actual cross-channel recall, newest message scroll, visible composer, no call overlap"
+  ],
+  "errors": [],
+  "note": "Isolated offline synthetic conversation fixture in Chromium; final 390x440 viewport simulates reduced keyboard space, not physical device testing."
+}

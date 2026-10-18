@@ -1,4 +1,4 @@
-"""Locations and venue data for the Bellwether Block neighborhood.
+"""Locations and venue data for the BlaxkVille neighborhood.
 
 Coordinates are world-space pixels. The client renders from this same payload,
 so the map and the simulation can never disagree.
@@ -10,7 +10,7 @@ LOCATIONS = [
     {
         "id": "cafe", "name": "Two Rivers Cafe", "kind": "cafe", "icon": "☕",
         "x": 260, "y": 300, "w": 210, "h": 150, "color": "#b9673d",
-        "desc": "Warm light, loud espresso machine, and the best mango cake in Bellwether.",
+        "desc": "Warm light, loud espresso machine, and the best mango cake in BlaxkVille.",
         "hours": [7, 22], "role": "social",
         "activities": [
             {"id": "coffee", "label": "Order a coffee", "cost": 6, "minutes": 20, "mood": 3, "social": 4},
@@ -30,7 +30,7 @@ LOCATIONS = [
         ],
     },
     {
-        "id": "grocery", "name": "Bellwether Market", "kind": "market", "icon": "🧺",
+        "id": "grocery", "name": "BlaxkVille Market", "kind": "market", "icon": "🧺",
         "x": 1080, "y": 240, "w": 220, "h": 150, "color": "#c9892f",
         "desc": "Fresh produce, loud bargaining, and gossip exchanged over tomatoes.",
         "hours": [7, 21], "role": "shop",
@@ -110,7 +110,7 @@ LOCATIONS = [
         ],
     },
     {
-        "id": "square", "name": "Bellwether Square", "kind": "square", "icon": "⛲",
+        "id": "square", "name": "BlaxkVille Square", "kind": "square", "icon": "⛲",
         "x": 1560, "y": 650, "w": 250, "h": 190, "color": "#0e7490",
         "desc": "The fountain, the notice board, and the unofficial stage for every neighborhood scene.",
         "hours": [0, 24], "role": "social",
@@ -154,6 +154,20 @@ WORKPLACE_BY_OCCUPATION = {
     "student": "cafe", "unemployed": "park", "social worker": "square", "physiotherapist": "gym",
 }
 
+# Civic facilities occupy the unused northern/perimeter lots; city dimensions stay fixed.
+LOCATIONS += [
+    {"id":"hospital", "name":"BlaxkVille General", "kind":"hospital", "icon":"🏥", "x":1070,"y":65,"w":210,"h":110,"color":"#447d80", "desc":"Emergency care, recovery wards and neighbours looking out for each other.","hours":[0,24],"role":"civic","activities":[]},
+    {"id":"graveyard", "name":"Juniper Rest", "kind":"graveyard", "icon":"🕊️", "x":1430,"y":65,"w":280,"h":125,"color":"#52675b", "desc":"A quiet memorial garden. Deaths here are permanent; every name has a history.","hours":[0,24],"role":"civic","activities":[]},
+    {"id":"police", "name":"Community Police", "kind":"police", "icon":"🚓", "x":70,"y":65,"w":190,"h":90,"color":"#345d8f", "desc":"Report thefts, disputes and raids. Officers patrol the neighbourhood.","hours":[0,24],"role":"civic","activities":[]},
+    {"id":"barracks", "name":"Northgate Garrison", "kind":"barracks", "icon":"🛡️", "x":300,"y":65,"w":210,"h":110,"color":"#62724e", "desc":"A small soldier detachment responds to armed bandit squads.","hours":[0,24],"role":"civic","activities":[]},
+    {"id":"black_market", "name":"The Backlot", "kind":"black_market", "icon":"🌑", "x":1740,"y":200,"w":120,"h":130,"color":"#4d4058", "desc":"Fictional gun and drug businesses. Abstract inventory, risky returns and police seizures—not real-world instructions.","hours":[0,24],"role":"civic","activities":[]},
+]
+for site in LOCATIONS:
+    if site['role']=='civic':
+        op={'hospital':'treatment','graveyard':'respects','police':'report','barracks':'report'}.get(site['id'])
+        site['activities']=[{'id':op or 'ledger','label': {'treatment':'Get treatment','respects':'Pay respects','report':'Report an incident'}.get(op,'Review the abstract trading ledger'),'cost':0,'minutes':5,'mood':1,'social':0,**({'civic_op':op} if op else {})}]
+SPAWN_POINTS.update({loc['id']:(loc['x']+loc['w']/2, loc['y']+loc['h']+36) for loc in LOCATIONS if loc['role']=='civic'})
+WORKPLACE_BY_OCCUPATION['nurse'] = 'hospital'
 LOCATION_BY_ID = {loc["id"]: loc for loc in LOCATIONS}
 
 
